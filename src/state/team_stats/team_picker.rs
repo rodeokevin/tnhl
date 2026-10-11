@@ -26,10 +26,14 @@ impl TeamPickerState {
             return Err(InputError::InvalidLength);
         }
 
-        TeamAbbrev::from_str(input).map_err(|_| {
-            self.is_valid = false;
-            InputError::InvalidTeam
-        })
+        match TeamAbbrev::from_str(input) {
+            // Event teams (All-Stars, national teams) have no team stats
+            Ok(team) if team.is_franchise() => Ok(team),
+            _ => {
+                self.is_valid = false;
+                Err(InputError::InvalidTeam)
+            }
+        }
     }
     /// Set the team from the validated input string from the team picker
     pub fn set_team_from_valid_input(&mut self, team: TeamAbbrev) {

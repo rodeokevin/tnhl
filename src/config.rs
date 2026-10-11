@@ -88,8 +88,9 @@ impl ConfigFile {
     fn validate_favorite_team(&self) -> Option<TeamAbbrev> {
         let favorite = self.favorite_team.as_ref()?;
         match TeamAbbrev::from_str(favorite.trim()) {
-            Ok(team) => Some(team),
-            Err(_) => {
+            // Event teams (All-Stars, national teams) aren't valid favorites
+            Ok(team) if team.is_franchise() => Some(team),
+            _ => {
                 error!("invalid favorite_team in config: {favorite:?}");
                 None
             }
@@ -200,6 +201,14 @@ mod tests {
         assert_eq!(
             config_with_favorite(Some("  VgK ")).validate_favorite_team(),
             Some(TeamAbbrev::VGK)
+        );
+    }
+
+    #[test]
+    fn event_team_is_not_a_valid_favorite() {
+        assert_eq!(
+            config_with_favorite(Some("CAN")).validate_favorite_team(),
+            None
         );
     }
 
