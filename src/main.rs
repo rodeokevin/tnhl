@@ -76,6 +76,11 @@ async fn resolve_today_from_api(app: &mut App, client: &reqwest::Client) {
     }
 }
 
+/// Commands queued for each source. Sources only read commands between
+/// requests, so tab switches during a slow request pile up here; a full queue
+/// drops commands (e.g. a date change), so leave plenty of headroom.
+const COMMAND_CHANNEL_CAPACITY: usize = 32;
+
 /// Upper bound on any single NHL API request, so a stalled connection can't
 /// hold one of the shared request slots forever.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -134,16 +139,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let (games_cmd_tx, games_cmd_rx) = tokio::sync::mpsc::channel(8);
-    let (standings_cmd_tx, standings_cmd_rx) = tokio::sync::mpsc::channel(8);
-    let (boxscore_cmd_tx, boxscore_cmd_rx) = tokio::sync::mpsc::channel(8);
-    let (plays_cmd_tx, plays_cmd_rx) = tokio::sync::mpsc::channel(8);
-    let (game_story_tx, game_story_rx) = tokio::sync::mpsc::channel(8);
-    let (team_stats_tx, team_stats_rx) = tokio::sync::mpsc::channel(8);
-    let (bracket_tx, bracket_rx) = tokio::sync::mpsc::channel(8);
-    let (series_tx, series_rx) = tokio::sync::mpsc::channel(8);
-    let (total_goals_tx, total_goals_rx) = tokio::sync::mpsc::channel(8);
-    let (bracket_series_tx, bracket_series_rx) = tokio::sync::mpsc::channel(8);
+    let (games_cmd_tx, games_cmd_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (standings_cmd_tx, standings_cmd_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (boxscore_cmd_tx, boxscore_cmd_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (plays_cmd_tx, plays_cmd_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (game_story_tx, game_story_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (team_stats_tx, team_stats_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (bracket_tx, bracket_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (series_tx, series_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (total_goals_tx, total_goals_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (bracket_series_tx, bracket_series_rx) =
+        tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
 
     // Date is configured in here
     let mut app = App::new(
