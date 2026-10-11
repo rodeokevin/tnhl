@@ -41,6 +41,11 @@ pub struct ConfigFile {
     /// Optional log level to use. If not present, the default is `Error`.
     /// Set the level using a lowercase string, e.g. "error".
     pub log_level: Option<LogLevel>,
+
+    /// Problems found while loading the file. The config is read before
+    /// logging starts, so these are reported once the logger is up.
+    #[serde(skip)]
+    pub warnings: Vec<String>,
 }
 
 impl Default for ConfigFile {
@@ -49,18 +54,28 @@ impl Default for ConfigFile {
             favorite_team: None,
             timezone: Some(ConfigFile::DEFAULT_TIMEZONE),
             log_level: None,
+            warnings: Vec::new(),
         }
     }
 }
 
 #[allow(clippy::from_over_into)]
 impl Into<AppSettings> for ConfigFile {
-    fn into(self) -> AppSettings {
+    fn into(mut self) -> AppSettings {
+        let favorite_team = self.validate_favorite_team();
+        if favorite_team.is_none()
+            && let Some(favorite) = &self.favorite_team
+        {
+            self.warnings.push(format!(
+                "favorite_team {favorite:?} is not an NHL team code; ignoring it"
+            ));
+        }
         AppSettings {
-            favorite_team: self.validate_favorite_team(),
+            favorite_team,
             timezone: self.validate_timezone(),
             timezone_abbreviation: self.get_timezone_abbreviation(),
             log_level: self.validate_log_level(),
+            config_warnings: self.warnings,
         }
     }
 }
@@ -84,16 +99,13 @@ impl ConfigFile {
     }
 
     /// Parse the configured favorite team abbreviation into a `TeamAbbrev`.
-    /// Invalid or missing values yield `None` (logged, non-fatal).
+    /// Invalid or missing values yield `None`.
     fn validate_favorite_team(&self) -> Option<TeamAbbrev> {
         let favorite = self.favorite_team.as_ref()?;
         match TeamAbbrev::from_str(favorite.trim()) {
             // Event teams (All-Stars, national teams) aren't valid favorites
             Ok(team) if team.is_franchise() => Some(team),
-            _ => {
-                error!("invalid favorite_team in config: {favorite:?}");
-                None
-            }
+            _ => None,
         }
     }
 
@@ -171,7 +183,51 @@ impl ConfigFile {
 
     fn load_config_file(path: &PathBuf) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path).context("could not read config file")?;
-        toml::from_str(&contents).context("could not deserialize config file")
+        Self::parse(&contents)
+    }
+
+    /// Parse each setting on its own, so one bad value only drops that setting
+    /// (with a warning) instead of discarding the whole file. Only invalid TOML
+    /// syntax fails the whole parse.
+    fn parse(contents: &str) -> anyhow::Result<Self> {
+        let mut table: toml::Table =
+            toml::from_str(contents).context("config file is not valid TOML")?;
+        let mut warnings = Vec::new();
+
+        let favorite_team = take_setting(&mut table, "favorite_team", &mut warnings);
+        let timezone =
+            take_setting(&mut table, "timezone", &mut warnings).or(Some(Self::DEFAULT_TIMEZONE));
+        let log_level = take_setting(&mut table, "log_level", &mut warnings);
+
+        for key in table.keys() {
+            warnings.push(format!("unknown setting {key:?}; ignoring it"));
+        }
+
+        Ok(Self {
+            favorite_team,
+            timezone,
+            log_level,
+            warnings,
+        })
+    }
+}
+
+/// Remove `key` from the table and parse it, recording a warning and
+/// returning `None` if the value is invalid.
+fn take_setting<T: serde::de::DeserializeOwned>(
+    table: &mut toml::Table,
+    key: &str,
+    warnings: &mut Vec<String>,
+) -> Option<T> {
+    let value = table.remove(key)?;
+    let shown = value.to_string();
+    match value.try_into() {
+        Ok(parsed) => Some(parsed),
+        Err(err) => {
+            let reason = err.message().trim().to_string();
+            warnings.push(format!("invalid {key} {shown}: {reason}; ignoring it"));
+            None
+        }
     }
 }
 
@@ -222,6 +278,46 @@ mod tests {
             config_with_favorite(Some("")).validate_favorite_team(),
             None
         );
+    }
+
+    #[test]
+    fn bad_setting_only_drops_that_setting() {
+        let cfg = ConfigFile::parse(
+            "timezone = \"US/Easter\"\nfavorite_team = \"MTL\"\nlog_level = \"debug\"\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.timezone, Some(ConfigFile::DEFAULT_TIMEZONE));
+        assert_eq!(cfg.favorite_team.as_deref(), Some("MTL"));
+        assert!(matches!(cfg.log_level, Some(LogLevel::Debug)));
+        assert_eq!(cfg.warnings.len(), 1);
+        assert!(cfg.warnings[0].contains("timezone"));
+    }
+
+    #[test]
+    fn valid_config_has_no_warnings() {
+        let cfg = ConfigFile::parse(
+            "timezone = \"US/Eastern\"\nfavorite_team = \"MTL\"\nlog_level = \"info\"\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.timezone, Some(chrono_tz::US::Eastern));
+        assert!(cfg.warnings.is_empty());
+    }
+
+    #[test]
+    fn unknown_and_invalid_settings_warn() {
+        let settings: AppSettings = ConfigFile::parse(
+            "favourite_team = \"MTL\"\nlog_level = \"loud\"\nfavorite_team = \"ZZZ\"\n",
+        )
+        .unwrap()
+        .into();
+        assert_eq!(settings.favorite_team, None);
+        assert_eq!(settings.log_level, None);
+        assert_eq!(settings.config_warnings.len(), 3);
+    }
+
+    #[test]
+    fn invalid_toml_fails_whole_file() {
+        assert!(ConfigFile::parse("timezone = \"US/Eastern").is_err());
     }
 
     #[test]

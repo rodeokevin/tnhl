@@ -102,6 +102,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         None => eprintln!("could not resolve a log file location; file logging disabled"),
     }
+    // Printed before the alternate screen opens, so they're still visible in the
+    // terminal after quitting
+    for warning in &settings.config_warnings {
+        log::error!("Config: {warning}");
+        eprintln!("tnhl config: {warning}");
+    }
 
     // A single shared HTTP client is reused by every source. Built before the
     // terminal is set up so a failure here doesn't leave it in raw mode.
