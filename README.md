@@ -1,8 +1,8 @@
-# TNHL
+# tnhl
 
-TNHL is a terminal-based NHL data dashboard built with Rust. It provides an interactive TUI for browsing games, standings, player/team stats, and playoff information by pulling data from the NHL API. (See https://github.com/Zmalski/NHL-API-Reference).
+tnhl is a terminal-based NHL data dashboard built with Rust. It provides an interactive TUI for browsing games, standings, player/team stats, and playoff information by pulling data from the NHL API. (See https://github.com/Zmalski/NHL-API-Reference).
 
-![Demo GIF](https://raw.githubusercontent.com/rodeokevin/TNHL/master/assets/demo.gif)
+![Demo GIF](https://raw.githubusercontent.com/rodeokevin/tnhl/master/assets/demo.gif)
 
 ## Features
 
@@ -24,7 +24,7 @@ Requires a recent stable [Rust toolchain](https://rustup.rs).
 Install from GitHub with cargo:
 
 ```bash
-cargo install --git https://github.com/rodeokevin/TNHL
+cargo install --git https://github.com/rodeokevin/tnhl
 ```
 
 Then run `tnhl`.
@@ -32,8 +32,8 @@ Then run `tnhl`.
 To build and run from a local clone instead:
 
 ```bash
-git clone https://github.com/rodeokevin/TNHL
-cd TNHL
+git clone https://github.com/rodeokevin/tnhl
+cd tnhl
 cargo run --release
 ```
 
@@ -48,7 +48,7 @@ cargo run --release
 
 ## Configuration
 
-TNHL reads an optional `tnhl.toml` config file, auto-generated with defaults on
+tnhl reads an optional `tnhl.toml` config file, auto-generated with defaults on
 first run. Its location depends on your OS:
 
 - Linux: `~/.config/tnhl/tnhl.toml`
@@ -73,17 +73,17 @@ log_level = "info"
 
 ## Acknowledgements
 
-TNHL was inspired by [mlbt](https://github.com/mlb-rs/mlbt), a terminal-based
+tnhl was inspired by [mlbt](https://github.com/mlb-rs/mlbt), a terminal-based
 MLB scoreboard also built with Rust and `ratatui`. Thanks to that project for
 showing how great a TUI sports dashboard can be.
 
 ## Disclaimer
 
-TNHL is an independent project and is not affiliated with, endorsed by, or
+tnhl is an independent project and is not affiliated with, endorsed by, or
 sponsored by the National Hockey League. NHL and team names are trademarks of
 the NHL and its teams. Data comes from the NHL's public,
 undocumented API and may change or become unavailable without notice.
 
 ## License
 
-TNHL is licensed under the [MIT License](LICENSE).
+tnhl is licensed under the [MIT License](LICENSE).
