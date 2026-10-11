@@ -67,6 +67,21 @@ async fn resolve_today_from_api(app: &mut App, client: &reqwest::Client) {
     }
 }
 
+/// Upper bound on any single NHL API request, so a stalled connection can't
+/// hold one of the shared request slots forever.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Restore the terminal before printing a panic, so a crash doesn't leave the
+/// shell in raw mode on the alternate screen.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture);
+        default_hook(info);
+    }));
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging before entering the alternate screen so any warning
@@ -87,6 +102,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         None => eprintln!("could not resolve a log file location; file logging disabled"),
     }
+
+    // A single shared HTTP client is reused by every source. Built before the
+    // terminal is set up so a failure here doesn't leave it in raw mode.
+    let client = reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()?;
+
+    install_panic_hook();
 
     // setup terminal
     enable_raw_mode()?;
@@ -125,8 +148,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Only the starting tab's sources poll; the rest wait until visited
     app.state.sync_active_sources();
 
-    // A single shared HTTP client is reused by every source
-    let client = reqwest::Client::new();
     resolve_today_from_api(&mut app, &client).await;
 
     let _ = run_app(

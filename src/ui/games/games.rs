@@ -383,7 +383,7 @@ pub fn render_time_remaining(
 ) {
     // Not in intermission
     if matches!(game.game_state, GameState::LIVE | GameState::CRIT) {
-        if let Some(clock) = &game.clock {
+        if let (Some(clock), Some(period)) = (&game.clock, &game.period_descriptor) {
             if !clock.in_intermission {
                 let chunks = split_area_horizontal(
                     area,
@@ -396,7 +396,7 @@ pub fn render_time_remaining(
 
                 let time = Line::from(format!(
                     "{} - {}",
-                    get_period_title(game.period_descriptor.as_ref().unwrap()),
+                    get_period_title(period),
                     clock.time_remaining,
                 ))
                 .centered();
@@ -430,13 +430,13 @@ pub fn render_time_remaining(
         )),
         GameState::LIVE | GameState::CRIT => {
             // in intermission or clock is None
-            match game.clock.as_ref() {
-                None => Line::from("Live"),
-                Some(_) => match game.period_descriptor.as_ref().unwrap().period_type {
+            match (game.clock.as_ref(), game.period_descriptor.as_ref()) {
+                (None, _) | (_, None) => Line::from("Live"),
+                (Some(clock), Some(period)) => match period.period_type {
                     PeriodType::REG | PeriodType::OT => Line::from(format!(
                         "End of {} ({})",
-                        get_period_title(game.period_descriptor.as_ref().unwrap()),
-                        game.clock.as_ref().unwrap().time_remaining
+                        get_period_title(period),
+                        clock.time_remaining
                     )),
                     PeriodType::SO => Line::from("End of Shootout"),
                     _ => Line::from("Intermission"),
@@ -444,7 +444,10 @@ pub fn render_time_remaining(
             }
         }
         GameState::OVER | GameState::FINAL | GameState::OFF => {
-            let outcome = game.game_outcome.as_ref().unwrap();
+            // The outcome can lag behind the final state, so fall back to "Final".
+            let Some(outcome) = game.game_outcome.as_ref() else {
+                return frame.render_widget(Line::from("Final").centered(), area);
+            };
             match outcome.last_period_type {
                 PeriodType::REG | PeriodType::Unknown => Line::from("Final"),
                 PeriodType::OT => match outcome.ot_periods.unwrap_or(0) {

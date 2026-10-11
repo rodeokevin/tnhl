@@ -236,10 +236,15 @@ fn render_schedule(
             },
 
             GameState::OVER | GameState::FINAL | GameState::OFF => {
-                let outcome = game.game_outcome.as_ref().unwrap();
-                Line::from(match outcome.last_period_type {
+                // The outcome can lag behind the final state, so fall back to "Final".
+                let last_period_type = game
+                    .game_outcome
+                    .as_ref()
+                    .map_or(&PeriodType::Unknown, |o| &o.last_period_type);
+                let ot_periods = game.game_outcome.as_ref().and_then(|o| o.ot_periods);
+                Line::from(match last_period_type {
                     PeriodType::REG | PeriodType::Unknown => "Final".to_string(),
-                    PeriodType::OT => match outcome.ot_periods.unwrap_or(0) {
+                    PeriodType::OT => match ot_periods.unwrap_or(0) {
                         n if n > 1 => format!("Final/{}OT", n),
                         _ => "Final/OT".to_string(),
                     },
