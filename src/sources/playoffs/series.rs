@@ -8,6 +8,7 @@ use crate::{AppEvent, Source};
 
 const FETCH_INTERVAL: Duration = Duration::from_secs(60);
 
+#[allow(clippy::enum_variant_names)] // Commands read as `SeriesCommand::SetX`
 pub enum SeriesCommand {
     SetYear(i32),
     SetSeries(Option<char>),
@@ -42,8 +43,8 @@ impl SeriesSource {
         if let Some(letter) = &self.series_letter {
             let url = format!(
                 "https://api-web.nhle.com/v1/schedule/playoff-series/{}{}/{}",
-                (self.current_year - 1).to_string(),
-                self.current_year.to_string(),
+                self.current_year - 1,
+                self.current_year,
                 letter,
             );
             match send_request(self.client.get(&url)).await {

@@ -357,15 +357,16 @@ mod tests {
     use crate::models::games::games::GamesResponse;
 
     fn games_with_selected(selected: usize) -> GamesState {
-        let mut state = GamesState::default();
-        state.games_data = Some(GamesResponse {
-            prev_date: None,
-            current_date: None,
-            next_date: None,
-            games: Vec::new(),
-        });
-        state.selected_game_index = selected;
-        state
+        GamesState {
+            games_data: Some(GamesResponse {
+                prev_date: None,
+                current_date: None,
+                next_date: None,
+                games: Vec::new(),
+            }),
+            selected_game_index: selected,
+            ..GamesState::default()
+        }
     }
 
     #[test]

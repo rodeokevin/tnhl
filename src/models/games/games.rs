@@ -52,6 +52,8 @@ pub struct Venue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+// Variant names are the API's own uppercase values
+#[allow(clippy::upper_case_acronyms)]
 pub enum GameState {
     FUT,
     PRE,
@@ -86,6 +88,8 @@ pub struct SeriesStatus {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+// Variant names are the API's own uppercase values
+#[allow(clippy::upper_case_acronyms)]
 pub enum PeriodType {
     REG,
     OT,

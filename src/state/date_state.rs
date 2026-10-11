@@ -24,7 +24,7 @@ pub struct DateState {
 impl DateState {
     /// Validate the input date
     pub fn validate_input_date(&mut self, tz: Tz) -> Result<NaiveDate, ParseError> {
-        let input: String = self.text.drain(..).collect();
+        let input: String = std::mem::take(&mut self.text);
         let date = match input.as_str() {
             "t" | "today" => Ok(Utc::now().with_timezone(&tz).date_naive()),
             _ => NaiveDate::parse_from_str(input.as_str(), "%Y-%m-%d"),
@@ -39,7 +39,7 @@ impl DateState {
     }
     /// Validate the input year
     pub fn validate_input_year(&mut self, tz: Tz) -> Result<i32, ()> {
-        let input: String = self.text.drain(..).collect();
+        let input: String = std::mem::take(&mut self.text);
 
         let year = match input.as_str() {
             // Use the bounds-resolved current season if available

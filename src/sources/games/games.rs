@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 use crate::sources::{FetchInterval, GamesResponse, TabGate, send_request};
 use crate::{AppEvent, Source};
 
+#[allow(clippy::enum_variant_names)] // Commands read as `GamesCommand::SetX`
 pub enum GamesCommand {
     SetDate(String),
     SetInterval(Duration),

@@ -10,6 +10,7 @@ use crate::models::team_stats::TeamStatsResponse;
 /// Team stats change at most once per game, so a fixed interval is plenty
 const FETCH_INTERVAL: Duration = Duration::from_secs(60);
 
+#[allow(clippy::enum_variant_names)] // Commands read as `TeamStatsCommand::SetX`
 pub enum TeamStatsCommand {
     SetTeam(TeamAbbrev),
     SetYear(i32),
@@ -84,7 +85,7 @@ impl TeamStatsSource {
 
         let regular_season_url = format!(
             "https://api-web.nhle.com/v1/club-stats/{}/{}{}/2",
-            self.current_team.to_string(),
+            self.current_team,
             self.current_year - 1,
             self.current_year,
         );
@@ -96,7 +97,7 @@ impl TeamStatsSource {
                 if resp.status() == reqwest::StatusCode::NOT_FOUND {
                     let msg = format!(
                         "{} did not play in the {}-{} season.",
-                        self.current_team.to_string(),
+                        self.current_team,
                         self.current_year - 1,
                         self.current_year,
                     );
@@ -133,7 +134,7 @@ impl TeamStatsSource {
 
         let playoffs_url = format!(
             "https://api-web.nhle.com/v1/club-stats/{}/{}{}/3",
-            self.current_team.to_string(),
+            self.current_team,
             self.current_year - 1,
             self.current_year,
         );

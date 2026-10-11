@@ -273,7 +273,7 @@ fn build_goalies(
         }
         // Underlined team-abbrev header
         rows.push(Row::Full(
-            Line::from(format!("{team}"))
+            Line::from(team.to_string())
                 .style(Style::new().underlined())
                 .centered(),
         ));

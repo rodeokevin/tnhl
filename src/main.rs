@@ -1,3 +1,12 @@
+// Structural lints we've chosen not to follow: render functions take many
+// layout/data arguments, some return tuples of line lists, and modules like
+// `games::games` mirror the screens they draw.
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::module_inception
+)]
+
 mod app;
 mod banner;
 mod config;

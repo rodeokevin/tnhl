@@ -18,7 +18,7 @@ pub struct TeamPickerState {
 impl TeamPickerState {
     /// Validate the input date
     pub fn validate_input(&mut self) -> Result<TeamAbbrev, InputError> {
-        let input: String = self.text.drain(..).collect();
+        let input: String = std::mem::take(&mut self.text);
         let input = input.trim();
 
         if input.len() != 3 || !input.chars().all(|c| c.is_ascii_alphabetic()) {

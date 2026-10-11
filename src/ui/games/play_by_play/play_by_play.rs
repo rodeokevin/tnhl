@@ -170,7 +170,7 @@ fn name(roster: &HashMap<u32, &RosterPlayer>, id: Option<u32>) -> String {
 /// Resolve a player id to `Name (#xx)`, or `None` if unknown/missing.
 fn name_with_number(roster: &HashMap<u32, &RosterPlayer>, id: Option<u32>) -> Option<String> {
     id.and_then(|id| roster.get(&id))
-        .map(|p| format!("{}", p.short_name()))
+        .map(|p| p.short_name().to_string())
 }
 
 /// Build an nhl.com-style description of a play from its details + roster.

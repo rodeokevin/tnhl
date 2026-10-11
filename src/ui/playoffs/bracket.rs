@@ -197,7 +197,7 @@ fn canvas_height(layout: BracketLayout) -> u16 {
         BracketLayout::DoubleDivision | BracketLayout::MirroredTwoRound(_) => {
             1 + 2 * CARD_HEIGHT + 1
         }
-        BracketLayout::ReseededTree | BracketLayout::Modern => 1 + 4 * CARD_HEIGHT + 3 * 1,
+        BracketLayout::ReseededTree | BracketLayout::Modern => 1 + 4 * CARD_HEIGHT + 3,
     }
 }
 
@@ -328,11 +328,11 @@ fn render_modern_bracket(
         if !labelled_cols.insert(col) {
             continue;
         }
-        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter) {
-            if let Some(label) = round_label_for(series, cw) {
-                let vx = col as u16 * (cw + ROUND_HOR_GAP);
-                draw_round_label(frame, area, vx, 0, cw, &label, h_off, v_off);
-            }
+        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter)
+            && let Some(label) = round_label_for(series, cw)
+        {
+            let vx = col as u16 * (cw + ROUND_HOR_GAP);
+            draw_round_label(frame, area, vx, 0, cw, &label, h_off, v_off);
         }
     }
 
@@ -426,10 +426,10 @@ fn render_double_division(
     // Column labels
     let label_cols: [(&str, u16); 4] = [("A", 0), ("I", 1), ("D", 2), ("B", 3)];
     for (letter, col) in label_cols {
-        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter) {
-            if let Some(label) = round_label_for(series, cw) {
-                draw_round_label(frame, area, col_vx(col), 0, cw, &label, h_off, v_off);
-            }
+        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter)
+            && let Some(label) = round_label_for(series, cw)
+        {
+            draw_round_label(frame, area, col_vx(col), 0, cw, &label, h_off, v_off);
         }
     }
 
@@ -540,13 +540,12 @@ fn render_reseeded_tree(
     // Column labels
     let mut labelled_cols: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for (&letter, &idx) in &occupied {
-        if let Some((col, _)) = series_letter_to_position(letter) {
-            if labelled_cols.insert(col) {
-                if let Some(label) = round_label_for(&series_list[idx], cw) {
-                    let vx = col as u16 * (cw + ROUND_HOR_GAP);
-                    draw_round_label(frame, area, vx, 0, cw, &label, h_off, v_off);
-                }
-            }
+        if let Some((col, _)) = series_letter_to_position(letter)
+            && labelled_cols.insert(col)
+            && let Some(label) = round_label_for(&series_list[idx], cw)
+        {
+            let vx = col as u16 * (cw + ROUND_HOR_GAP);
+            draw_round_label(frame, area, vx, 0, cw, &label, h_off, v_off);
         }
     }
 
@@ -690,10 +689,10 @@ fn render_mirrored_two_round(
         (arr.right_sf, 3),
         (arr.right_qf[0], 4),
     ] {
-        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter) {
-            if let Some(label) = round_label_for(series, cw) {
-                draw_round_label(frame, area, col_vx(col), 0, cw, &label, h_off, v_off);
-            }
+        if let Some(series) = series_list.iter().find(|s| s.series_letter == letter)
+            && let Some(label) = round_label_for(series, cw)
+        {
+            draw_round_label(frame, area, col_vx(col), 0, cw, &label, h_off, v_off);
         }
     }
 

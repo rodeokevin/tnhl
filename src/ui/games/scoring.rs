@@ -216,7 +216,7 @@ pub fn render_scoring(
     frame.render_widget(Paragraph::new(visible_home), columns[2]);
 }
 
-fn get_assists_line(assists: &Vec<AssistInfo>, alignment: Alignment) -> Line<'static> {
+fn get_assists_line(assists: &[AssistInfo], alignment: Alignment) -> Line<'static> {
     if !assists.is_empty() {
         let assists_text = get_assists_text(assists);
         Line::styled(
@@ -230,7 +230,7 @@ fn get_assists_line(assists: &Vec<AssistInfo>, alignment: Alignment) -> Line<'st
     }
 }
 
-fn get_assists_text(assists: &Vec<AssistInfo>) -> String {
+fn get_assists_text(assists: &[AssistInfo]) -> String {
     assists
         .iter()
         .map(|assist| {

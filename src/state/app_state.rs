@@ -800,7 +800,7 @@ pub fn table_page_down(visible_rows: usize, len: usize, table_state: &mut TableS
         // The last visible row becomes the first visible row
         // But if last visible row is the last row in the table, simply select it without changing the offset
         let offset = table_state.offset();
-        let last_visible = if offset + visible_rows - 1 >= len - 1 {
+        let last_visible = if offset + visible_rows > len - 1 {
             len - 1
         } else {
             *table_state.offset_mut() = (offset + visible_rows - 1).min(len - 1);

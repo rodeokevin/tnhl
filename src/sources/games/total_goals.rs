@@ -99,9 +99,9 @@ impl Source for TotalGoalsSource {
                             }
                         }
                         TotalGoalsCommand::SetTargets(mut targets) => {
-                            targets.sort_by(|a, b| a.game_id.cmp(&b.game_id));
+                            targets.sort_by_key(|a| a.game_id);
                             let mut current = self.targets.clone();
-                            current.sort_by(|a, b| a.game_id.cmp(&b.game_id));
+                            current.sort_by_key(|a| a.game_id);
                             if targets != current {
                                 log::debug!("Fetching Games total-goals series because targets changed");
                                 self.targets = targets;

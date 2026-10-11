@@ -8,6 +8,7 @@ const BRACKET_SCROLL_STEP: usize = 2;
 /// full screen so paging the large canvas isn't a huge jump.
 const BRACKET_PAGE_STEP: usize = 10;
 
+#[derive(Default)]
 pub struct PlayoffsState {
     pub focus: PlayoffsFocus,
     pub bracket_data: Option<BracketResponse>,
@@ -25,27 +26,6 @@ pub struct PlayoffsState {
     /// Max vertical scroll updated at render
     pub vertical_max_scroll: usize,
     pub saved_bracket_scroll: Option<(usize, usize)>,
-}
-
-impl Default for PlayoffsState {
-    fn default() -> Self {
-        Self {
-            focus: PlayoffsFocus::default(),
-            bracket_data: None,
-            visible_rows: 0,
-            visible_columns: 0,
-
-            selected_series: None,
-            series_data: None,
-            bracket_series_data: HashMap::new(),
-
-            horizontal_scroll_offset: 0,
-            horizontal_max_scroll: 0,
-            vertical_scroll_offset: 0,
-            vertical_max_scroll: 0,
-            saved_bracket_scroll: None,
-        }
-    }
 }
 
 impl PlayoffsState {
@@ -131,15 +111,14 @@ impl PlayoffsState {
     pub fn try_select_series(&mut self, letter: char) -> bool {
         let letter = letter.to_ascii_uppercase();
 
-        if let Some(data) = &self.bracket_data {
-            if data
+        if let Some(data) = &self.bracket_data
+            && data
                 .series
                 .iter()
                 .any(|s| s.series_letter == letter.to_string())
-            {
-                self.selected_series = Some(letter);
-                return true;
-            }
+        {
+            self.selected_series = Some(letter);
+            return true;
         }
         false
     }

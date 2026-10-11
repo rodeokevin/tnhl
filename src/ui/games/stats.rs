@@ -71,8 +71,8 @@ pub fn render_stats(frame: &mut Frame, app: &mut App, area: Rect) {
                 &mut home_lines,
                 "Face-off %".to_string(),
                 faceoff,
-                format!("{}%", faceoff.away_value.to_string()),
-                format!("{}%", faceoff.home_value.to_string()),
+                format!("{}%", faceoff.away_value),
+                format!("{}%", faceoff.home_value),
             );
         }
         // Power Play %
@@ -83,8 +83,8 @@ pub fn render_stats(frame: &mut Frame, app: &mut App, area: Rect) {
                 &mut home_lines,
                 "Power Play %".to_string(),
                 power_play_pctg,
-                format!("{}%", power_play_pctg.away_value.to_string()),
-                format!("{}%", power_play_pctg.home_value.to_string()),
+                format!("{}%", power_play_pctg.away_value),
+                format!("{}%", power_play_pctg.home_value),
             );
             if let Some(&power_play_rate) = stats_map.get(&GameStatsCategory::PowerPlay) {
                 away_lines.push(
@@ -232,16 +232,20 @@ fn compute_middle_bar<'a>(away_value: &'a StatValue, home_value: &'a StatValue) 
         home_length = (STATS_MIDDLE_LENGTH - 3).saturating_sub(away_length);
     }
     let gap = std::iter::once(Span::raw(if away_zero ^ home_zero { "" } else { " " }));
-    let away_spans: Vec<_> = std::iter::repeat(Span::styled("─", Style::new().fg(AWAY_BAR_COLOR)))
-        .take(away_length as usize)
-        .collect();
-    let home_spans: Vec<_> = std::iter::repeat(Span::styled("─", Style::new().fg(HOME_BAR_COLOR)))
-        .take(home_length as usize)
-        .collect();
+    let away_spans: Vec<_> = std::iter::repeat_n(
+        Span::styled("─", Style::new().fg(AWAY_BAR_COLOR)),
+        away_length as usize,
+    )
+    .collect();
+    let home_spans: Vec<_> = std::iter::repeat_n(
+        Span::styled("─", Style::new().fg(HOME_BAR_COLOR)),
+        home_length as usize,
+    )
+    .collect();
     let spans: Vec<_> = away_spans
         .into_iter()
         .chain(gap)
-        .chain(home_spans.into_iter())
+        .chain(home_spans)
         .collect();
 
     Line::from(spans).centered()

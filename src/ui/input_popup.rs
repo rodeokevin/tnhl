@@ -44,7 +44,7 @@ impl Widget for InputPopup<'_> {
 
         if let Some(bottom) = self.bottom_text {
             block = block.title_bottom(Span::styled(
-                format!("{}", bottom),
+                bottom.to_string(),
                 Style::new().fg(Color::DarkGray),
             ));
         }

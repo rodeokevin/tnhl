@@ -37,7 +37,7 @@ impl BracketSource {
         }
         let url = format!(
             "https://api-web.nhle.com/v1/playoff-bracket/{}",
-            self.current_year.to_string()
+            self.current_year
         );
 
         match send_request(self.client.get(&url)).await {

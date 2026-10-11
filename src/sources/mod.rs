@@ -17,6 +17,7 @@ pub mod teams_stats;
 pub mod today;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum FetchInterval {
     GamesShortInterval,
     GamesLongInterval,
@@ -182,6 +183,8 @@ pub enum AppEvent {
     Tick,
 }
 
+// async_trait marks its boxed future #[must_use], which clippy flags as redundant
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait Source: Send + 'static {
     async fn run(

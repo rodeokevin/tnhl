@@ -12,6 +12,7 @@ use crate::sources::StandingsResponse;
 /// Standings change at most once per game, so a fixed interval is plenty
 const FETCH_INTERVAL: Duration = Duration::from_secs(60);
 
+#[allow(clippy::enum_variant_names)] // Commands read as `StandingsCommand::SetX`
 pub enum StandingsCommand {
     SetDate(String),
     SetSeasonBounds(Vec<SeasonBounds>),

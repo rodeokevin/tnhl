@@ -257,122 +257,122 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
         let series = app.state.games.total_goals_data.get(&g.id)?;
         Some(total_goals_status_line(series, viewed_game_number))
     });
-    if let Some(games_data) = &mut app.state.games.games_data {
-        if let Some(game) = games_data.games.get(app.state.games.selected_game_index) {
-            // Upper info
-            let upper_info_chunks = split_area_vertical(
-                upper_score_lower[0],
+    if let Some(games_data) = &mut app.state.games.games_data
+        && let Some(game) = games_data.games.get(app.state.games.selected_game_index)
+    {
+        // Upper info
+        let upper_info_chunks = split_area_vertical(
+            upper_score_lower[0],
+            [
+                Constraint::Length(1), // Time remaining
+                Constraint::Length(1), // Status bar
+                Constraint::Length(1), // Teams and strength status
+                Constraint::Length(1), // Shots on goal
+            ],
+        );
+        render_time_remaining(
+            game,
+            app.settings.timezone,
+            &app.settings.timezone_abbreviation,
+            frame,
+            upper_info_chunks[0],
+        );
+        render_sweeping_status(
+            game,
+            10,
+            app.state.games.sweeping_status_offset,
+            frame,
+            upper_info_chunks[1],
+        );
+        render_team_status(game, favorite, frame, upper_info_chunks[2]);
+        // Show record if pregame, sog if live or ended
+        if app.state.games.focus == GamesFocus::Pregame {
+            render_season_records(
+                app.state.games.game_story_data.get(&game.id),
+                frame,
+                upper_info_chunks[3],
+            );
+        } else {
+            render_shots_on_goal(game, frame, upper_info_chunks[3]);
+        }
+        render_big_score(game, frame, upper_score_lower[1]);
+
+        if let Some(series) = &game.series_status {
+            let series_chunks = split_area_vertical(
+                series_area,
                 [
-                    Constraint::Length(1), // Time remaining
-                    Constraint::Length(1), // Status bar
-                    Constraint::Length(1), // Teams and strength status
-                    Constraint::Length(1), // Shots on goal
+                    Constraint::Length(1), // Playoff information
+                    Constraint::Length(1), // Playoff status
                 ],
             );
-            render_time_remaining(
-                game,
-                app.settings.timezone,
-                &app.settings.timezone_abbreviation,
+            render_series_info(series, frame, series_chunks[0]);
+            render_series_status(
+                series,
+                total_goals_status.as_deref(),
                 frame,
-                upper_info_chunks[0],
+                series_chunks[1],
             );
-            render_sweeping_status(
-                game,
-                10,
-                app.state.games.sweeping_status_offset,
-                frame,
-                upper_info_chunks[1],
+        }
+
+        // The lower region is the main content
+        let main_area = upper_score_lower[2];
+
+        let show_plays =
+            app.state.games.plays_visible && app.state.games.focus != GamesFocus::Pregame;
+        let (main_area, plays_area) = if show_plays {
+            let halves = split_area_horizontal(
+                main_area,
+                [Constraint::Percentage(50), Constraint::Percentage(50)],
             );
-            render_team_status(game, favorite, frame, upper_info_chunks[2]);
-            // Show record if pregame, sog if live or ended
-            if app.state.games.focus == GamesFocus::Pregame {
-                render_season_records(
+            (halves[0], Some(halves[1]))
+        } else {
+            (main_area, None)
+        };
+
+        let main_focused = !app.state.games.plays_focused;
+        let main_border = if main_focused {
+            border_style()
+        } else {
+            Style::new().fg(Color::DarkGray)
+        };
+        let main_block = Block::bordered()
+            .title(get_block_title(&app.state.games.focus))
+            .border_style(main_border);
+        let main_inner = main_block.inner(main_area);
+        frame.render_widget(main_block, main_area);
+
+        match &app.state.games.focus {
+            // Before a game goes live, show the pre-game matchup
+            GamesFocus::Pregame => {
+                pregame::render_pregame(
                     app.state.games.game_story_data.get(&game.id),
                     frame,
-                    upper_info_chunks[3],
+                    main_inner,
+                    app.state.games.scroll_offset,
+                    &mut app.state.games.max_scroll,
+                    &mut app.state.games.visible_rows,
                 );
-            } else {
-                render_shots_on_goal(game, frame, upper_info_chunks[3]);
             }
-            render_big_score(game, frame, upper_score_lower[1]);
-
-            if let Some(series) = &game.series_status {
-                let series_chunks = split_area_vertical(
-                    series_area,
-                    [
-                        Constraint::Length(1), // Playoff information
-                        Constraint::Length(1), // Playoff status
-                    ],
-                );
-                render_series_info(series, frame, series_chunks[0]);
-                render_series_status(
-                    series,
-                    total_goals_status.as_deref(),
+            GamesFocus::Scoring => {
+                scoring::render_scoring(
+                    app.state.games.game_story_data.get(&game.id),
                     frame,
-                    series_chunks[1],
+                    main_inner,
+                    app.state.games.scroll_offset,
+                    &mut app.state.games.max_scroll,
+                    &mut app.state.games.visible_rows,
                 );
             }
-
-            // The lower region is the main content
-            let main_area = upper_score_lower[2];
-
-            let show_plays =
-                app.state.games.plays_visible && app.state.games.focus != GamesFocus::Pregame;
-            let (main_area, plays_area) = if show_plays {
-                let halves = split_area_horizontal(
-                    main_area,
-                    [Constraint::Percentage(50), Constraint::Percentage(50)],
-                );
-                (halves[0], Some(halves[1]))
-            } else {
-                (main_area, None)
-            };
-
-            let main_focused = !app.state.games.plays_focused;
-            let main_border = if main_focused {
-                border_style()
-            } else {
-                Style::new().fg(Color::DarkGray)
-            };
-            let main_block = Block::bordered()
-                .title(get_block_title(&app.state.games.focus))
-                .border_style(main_border);
-            let main_inner = main_block.inner(main_area);
-            frame.render_widget(main_block, main_area);
-
-            match &app.state.games.focus {
-                // Before a game goes live, show the pre-game matchup
-                GamesFocus::Pregame => {
-                    pregame::render_pregame(
-                        app.state.games.game_story_data.get(&game.id),
-                        frame,
-                        main_inner,
-                        app.state.games.scroll_offset,
-                        &mut app.state.games.max_scroll,
-                        &mut app.state.games.visible_rows,
-                    );
-                }
-                GamesFocus::Scoring => {
-                    scoring::render_scoring(
-                        app.state.games.game_story_data.get(&game.id),
-                        frame,
-                        main_inner,
-                        app.state.games.scroll_offset,
-                        &mut app.state.games.max_scroll,
-                        &mut app.state.games.visible_rows,
-                    );
-                }
-                GamesFocus::Boxscore => {
-                    boxscore::render_boxscore(frame, app, main_inner);
-                }
-                GamesFocus::Stats => {
-                    stats::render_stats(frame, app, main_inner);
-                }
+            GamesFocus::Boxscore => {
+                boxscore::render_boxscore(frame, app, main_inner);
             }
-
-            if let Some(plays_area) = plays_area {
-                play_by_play::render_play_by_play(frame, app, plays_area);
+            GamesFocus::Stats => {
+                stats::render_stats(frame, app, main_inner);
             }
+        }
+
+        if let Some(plays_area) = plays_area {
+            play_by_play::render_play_by_play(frame, app, plays_area);
         }
     }
 }
@@ -393,45 +393,44 @@ pub fn render_time_remaining(
     area: Rect,
 ) {
     // Not in intermission
-    if matches!(game.game_state, GameState::LIVE | GameState::CRIT) {
-        if let (Some(clock), Some(period)) = (&game.clock, &game.period_descriptor) {
-            if !clock.in_intermission {
-                let chunks = split_area_horizontal(
-                    area,
-                    [
-                        Constraint::Fill(1),
-                        Constraint::Length(22),
-                        Constraint::Fill(1),
-                    ],
-                );
+    if matches!(game.game_state, GameState::LIVE | GameState::CRIT)
+        && let (Some(clock), Some(period)) = (&game.clock, &game.period_descriptor)
+        && !clock.in_intermission
+    {
+        let chunks = split_area_horizontal(
+            area,
+            [
+                Constraint::Fill(1),
+                Constraint::Length(22),
+                Constraint::Fill(1),
+            ],
+        );
 
-                let time = Line::from(format!(
-                    "{} - {}",
-                    get_period_title(period),
-                    clock.time_remaining,
-                ))
-                .centered();
+        let time = Line::from(format!(
+            "{} - {}",
+            get_period_title(period),
+            clock.time_remaining,
+        ))
+        .centered();
 
-                frame.render_widget(time, chunks[1]);
+        frame.render_widget(time, chunks[1]);
 
-                let spans: Vec<Span> = game
-                    .situation
-                    .as_ref()
-                    .map(|s| {
-                        vec![Span::styled(
-                            format!(
-                                " {}-on-{}",
-                                s.away_team.strength.max(s.home_team.strength),
-                                s.away_team.strength.min(s.home_team.strength)
-                            ),
-                            Style::new().fg(AWAY_BAR_COLOR).bold(),
-                        )]
-                    })
-                    .unwrap_or_default();
-                frame.render_widget(Line::from(spans).left_aligned(), chunks[2]);
-                return;
-            }
-        }
+        let spans: Vec<Span> = game
+            .situation
+            .as_ref()
+            .map(|s| {
+                vec![Span::styled(
+                    format!(
+                        " {}-on-{}",
+                        s.away_team.strength.max(s.home_team.strength),
+                        s.away_team.strength.min(s.home_team.strength)
+                    ),
+                    Style::new().fg(AWAY_BAR_COLOR).bold(),
+                )]
+            })
+            .unwrap_or_default();
+        frame.render_widget(Line::from(spans).left_aligned(), chunks[2]);
+        return;
     }
     let line = match game.game_state {
         GameState::FUT | GameState::PRE => Line::from(format!(
@@ -503,8 +502,7 @@ pub fn render_sweeping_status(
                     frame.render_widget(Line::from(spans).centered(), chunks[1]);
                 } else {
                     let spans: Vec<_> =
-                        std::iter::repeat(Span::styled("─", Style::new().fg(Color::Red)))
-                            .take(width)
+                        std::iter::repeat_n(Span::styled("─", Style::new().fg(Color::Red)), width)
                             .collect();
 
                     frame.render_widget(Line::from(spans).centered(), chunks[1]);
@@ -535,24 +533,24 @@ pub fn render_team_status(
     let mut left_spans = vec![];
     let situation = game.situation.as_ref();
 
-    if let Some(s) = situation {
-        if let Some(descs) = s.away_team.situation_descriptions.as_deref() {
-            let parts: Vec<String> = descs
-                .iter()
-                .map(|d| match d {
-                    SituationDesc::PP => match &s.time_remaining {
-                        Some(t) => format!("PP: {}", t),
-                        None => "PP".to_string(),
-                    },
-                    SituationDesc::EN => "EN".to_string(),
-                    SituationDesc::Unknown => "Unknown".to_string(),
-                })
-                .collect();
+    if let Some(s) = situation
+        && let Some(descs) = s.away_team.situation_descriptions.as_deref()
+    {
+        let parts: Vec<String> = descs
+            .iter()
+            .map(|d| match d {
+                SituationDesc::PP => match &s.time_remaining {
+                    Some(t) => format!("PP: {}", t),
+                    None => "PP".to_string(),
+                },
+                SituationDesc::EN => "EN".to_string(),
+                SituationDesc::Unknown => "Unknown".to_string(),
+            })
+            .collect();
 
-            if !parts.is_empty() {
-                let label = format!("[{}] ", parts.join(", "));
-                left_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
-            }
+        if !parts.is_empty() {
+            let label = format!("[{}] ", parts.join(", "));
+            left_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
         }
     }
     left_spans.push(Span::styled(
@@ -567,23 +565,23 @@ pub fn render_team_status(
         &game.home_team.name.default,
         name_style(game.home_team.abbrev),
     ));
-    if let Some(s) = situation {
-        if let Some(descs) = s.home_team.situation_descriptions.as_deref() {
-            let parts: Vec<String> = descs
-                .iter()
-                .map(|d| match d {
-                    SituationDesc::PP => match &s.time_remaining {
-                        Some(t) => format!("PP: {}", t),
-                        None => "PP".to_string(),
-                    },
-                    SituationDesc::EN => "EN".to_string(),
-                    SituationDesc::Unknown => "Unknown".to_string(),
-                })
-                .collect();
-            if !parts.is_empty() {
-                let label = format!(" [{}]", parts.join(", "));
-                right_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
-            }
+    if let Some(s) = situation
+        && let Some(descs) = s.home_team.situation_descriptions.as_deref()
+    {
+        let parts: Vec<String> = descs
+            .iter()
+            .map(|d| match d {
+                SituationDesc::PP => match &s.time_remaining {
+                    Some(t) => format!("PP: {}", t),
+                    None => "PP".to_string(),
+                },
+                SituationDesc::EN => "EN".to_string(),
+                SituationDesc::Unknown => "Unknown".to_string(),
+            })
+            .collect();
+        if !parts.is_empty() {
+            let label = format!(" [{}]", parts.join(", "));
+            right_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
         }
     }
     frame.render_widget(Line::from(right_spans).left_aligned(), chunks[2]);
