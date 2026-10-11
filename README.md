@@ -2,7 +2,7 @@
 
 TNHL is a terminal-based NHL data dashboard built with Rust. It provides an interactive TUI for browsing games, standings, player/team stats, and playoff information by pulling data from the NHL API. (See https://github.com/Zmalski/NHL-API-Reference).
 
-![Demo GIF](assets/demo.gif)
+![Demo GIF](https://raw.githubusercontent.com/rodeokevin/TNHL/master/assets/demo.gif)
 
 ## Features
 
@@ -19,10 +19,22 @@ TNHL is a terminal-based NHL data dashboard built with Rust. It provides an inte
 
 ## Installation
 
-Using cargo:
+Requires a recent stable [Rust toolchain](https://rustup.rs).
+
+Install from GitHub with cargo:
 
 ```bash
-cargo run
+cargo install --git https://github.com/rodeokevin/TNHL
+```
+
+Then run `tnhl`.
+
+To build and run from a local clone instead:
+
+```bash
+git clone https://github.com/rodeokevin/TNHL
+cd TNHL
+cargo run --release
 ```
 
 ## Usage
@@ -64,3 +76,14 @@ log_level = "info"
 TNHL was inspired by [mlbt](https://github.com/mlb-rs/mlbt), a terminal-based
 MLB scoreboard also built with Rust and `ratatui`. Thanks to that project for
 showing how great a TUI sports dashboard can be.
+
+## Disclaimer
+
+TNHL is an independent project and is not affiliated with, endorsed by, or
+sponsored by the National Hockey League. NHL and team names are trademarks of
+the NHL and its teams. Data comes from the NHL's public,
+undocumented API and may change or become unavailable without notice.
+
+## License
+
+TNHL is licensed under the [MIT License](LICENSE).
