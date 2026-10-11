@@ -48,7 +48,10 @@ impl BracketSource {
                         Ok(parsed_playoff_bracket) => {
                             log::debug!("Bracket data successfully parsed");
                             let _ = tx
-                                .send(AppEvent::BracketUpdate(parsed_playoff_bracket))
+                                .send(AppEvent::BracketUpdate {
+                                    year: self.current_year,
+                                    bracket: parsed_playoff_bracket,
+                                })
                                 .await;
                             log::debug!("Sent Bracket data to app");
                         }

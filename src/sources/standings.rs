@@ -85,6 +85,7 @@ impl StandingsSource {
                 // The requested date falls between two seasons
                 let _ = tx
                     .send(AppEvent::StandingsOutOfRange {
+                        date: self.current_date.clone(),
                         message: self.unavailable_message(),
                     })
                     .await;
@@ -97,7 +98,10 @@ impl StandingsSource {
                 );
                 log::debug!("Requested standings date is after latest season: {}", msg);
                 let _ = tx
-                    .send(AppEvent::StandingsOutOfRange { message: msg })
+                    .send(AppEvent::StandingsOutOfRange {
+                        date: self.current_date.clone(),
+                        message: msg,
+                    })
                     .await;
                 return;
             }
@@ -111,7 +115,10 @@ impl StandingsSource {
                     msg
                 );
                 let _ = tx
-                    .send(AppEvent::StandingsOutOfRange { message: msg })
+                    .send(AppEvent::StandingsOutOfRange {
+                        date: self.current_date.clone(),
+                        message: msg,
+                    })
                     .await;
                 return;
             }
@@ -131,6 +138,7 @@ impl StandingsSource {
                             log::debug!("Standings data successfully parsed (date {})", date);
                             let _ = tx
                                 .send(AppEvent::StandingsUpdate {
+                                    date: self.current_date.clone(),
                                     standings: parsed_standings,
                                     season,
                                 })

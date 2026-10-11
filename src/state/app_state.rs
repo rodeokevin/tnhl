@@ -159,13 +159,12 @@ impl AppState {
         match event {
             AppEvent::SeasonResolved { year } => {
                 log::debug!("Season resolved to end year {}", year);
-                // This can arrive twice: a fallback year, then the real one after
-                // a retry. Only the first sets the selected year; a retry just
-                // updates what "today" in the year picker jumps to, so the
-                // screen never changes without user input.
-                let first = self.date_state.current_season_year.is_none();
+                // Only fill in the selected year while it's still unset (0): a
+                // year the user picked, or one already filled in by an earlier
+                // result (e.g. a fallback before a retry), is never replaced.
+                // "Today" in the year picker always jumps to the latest result.
                 self.date_state.current_season_year = Some(year);
-                if first {
+                if self.date_state.year == 0 {
                     self.date_state.year = year;
                     // Fetch team stats / playoffs for the resolved season.
                     self.handle_year_change();
@@ -191,13 +190,31 @@ impl AppState {
                     .try_send(TeamStatsCommand::SetSeasonBounds(seasons))
                     .ok();
             }
-            AppEvent::StandingsUpdate { standings, season } => {
+            AppEvent::StandingsUpdate { ref date, .. }
+            | AppEvent::StandingsOutOfRange { ref date, .. }
+                if !self.is_selected_date(Some(date)) =>
+            {
+                log::debug!("Ignoring standings for {}", date);
+            }
+            AppEvent::TeamStatsRegularSeasonUpdate { team, year, .. }
+            | AppEvent::TeamStatsPlayoffsUpdate { team, year, .. }
+            | AppEvent::TeamStatsOutOfRange { team, year, .. }
+                if !self.is_selected_team_stats(team, year) =>
+            {
+                log::debug!("Ignoring team stats for {} {}", team, year);
+            }
+            AppEvent::BracketUpdate { year, .. } if year != self.date_state.year => {
+                log::debug!("Ignoring bracket for {}", year);
+            }
+            AppEvent::StandingsUpdate {
+                standings, season, ..
+            } => {
                 log::debug!("Updating standings data");
                 self.standings.set_data(standings);
                 self.standings.season = season;
                 self.standings.out_of_range = None;
             }
-            AppEvent::StandingsOutOfRange { message } => {
+            AppEvent::StandingsOutOfRange { message, .. } => {
                 log::debug!("Standings date out of range: {}", message);
                 // Clear stale data
                 self.standings.standings_data = None;
@@ -277,17 +294,23 @@ impl AppState {
                     .game_story_data
                     .insert(game_id, parsed_game_story);
             }
-            AppEvent::TeamStatsRegularSeasonUpdate(parsed_team_stats) => {
+            AppEvent::TeamStatsRegularSeasonUpdate {
+                stats: parsed_team_stats,
+                ..
+            } => {
                 log::debug!("Updating regular season team stats data");
                 self.team_stats.regular_season_team_stats_data = Some(parsed_team_stats);
                 self.team_stats.out_of_range = None;
             }
-            AppEvent::TeamStatsPlayoffsUpdate(parsed_team_stats) => {
+            AppEvent::TeamStatsPlayoffsUpdate {
+                stats: parsed_team_stats,
+                ..
+            } => {
                 log::debug!("Updating playoffs team stats data");
                 self.team_stats.playoffs_team_stats_data = Some(parsed_team_stats);
                 self.team_stats.out_of_range = None;
             }
-            AppEvent::TeamStatsOutOfRange { message } => {
+            AppEvent::TeamStatsOutOfRange { message, .. } => {
                 log::debug!("Team stats year out of range: {}", message);
                 // Clear stale data so we don't show stats for a different season
                 // than the one requested.
@@ -295,7 +318,10 @@ impl AppState {
                 self.team_stats.playoffs_team_stats_data = None;
                 self.team_stats.out_of_range = Some(message);
             }
-            AppEvent::BracketUpdate(parsed_bracket) => {
+            AppEvent::BracketUpdate {
+                bracket: parsed_bracket,
+                ..
+            } => {
                 log::debug!("Updating playoff bracket data");
                 // Two-game total-goals series last used in 1936
                 const LAST_TOTAL_GOALS_YEAR: i32 = 1936;
@@ -804,6 +830,12 @@ impl AppState {
         self.series_tx.try_send(SeriesCommand::SetSeries(None)).ok();
     }
 
+    /// Whether a team stats result fetched for `team` and `year` matches the
+    /// current Team Stats selection
+    fn is_selected_team_stats(&self, team: crate::models::TeamAbbrev, year: i32) -> bool {
+        team == self.team_stats.team_picker.current_team && year == self.date_state.year
+    }
+
     /// The selected season as the API's id, e.g. "20262027"
     fn selected_season_id(&self) -> String {
         format!("{}{}", self.date_state.year - 1, self.date_state.year)
@@ -1095,6 +1127,18 @@ mod tests {
         assert_eq!(state.date_state.year, 1995);
     }
 
+    #[test]
+    fn slow_first_season_resolution_keeps_user_picked_year() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        assert_eq!(state.date_state.year, 0, "unset until resolved or picked");
+
+        // The user picks a year before the first lookup returns
+        state.date_state.set_year_from_valid_input(1995);
+        state.handle_event(AppEvent::SeasonResolved { year: 2027 });
+        assert_eq!(state.date_state.year, 1995);
+        assert_eq!(state.date_state.current_season_year, Some(2027));
+    }
+
     fn series(letter: &str) -> crate::models::playoffs::series::SeriesResponse {
         let seed = r#"{"id":1,"name":{"default":"A"},"abbrev":"MTL","placeName":{"default":"A"},"record":"0-0","seriesWins":0,"seed":1}"#;
         let json = format!(
@@ -1147,5 +1191,92 @@ mod tests {
             parsed_series: series("A"),
         });
         assert!(state.playoffs.bracket_series_data.contains_key("A"));
+    }
+
+    #[test]
+    fn late_standings_for_another_date_are_ignored() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        let standings = || {
+            crate::models::standings::StandingsResponse::from_json(r#"{"standings":[]}"#).unwrap()
+        };
+        state.handle_event(AppEvent::StandingsUpdate {
+            date: "1999-01-01".to_string(),
+            standings: standings(),
+            season: None,
+        });
+        state.handle_event(AppEvent::StandingsOutOfRange {
+            date: "1999-01-01".to_string(),
+            message: "stale".to_string(),
+        });
+        assert!(state.standings.standings_data.is_none());
+        assert!(state.standings.out_of_range.is_none());
+
+        state.handle_event(AppEvent::StandingsUpdate {
+            date: state.date_state.date.to_string(),
+            standings: standings(),
+            season: None,
+        });
+        assert!(state.standings.standings_data.is_some());
+    }
+
+    #[test]
+    fn late_team_stats_for_another_team_or_year_are_ignored() {
+        use crate::models::TeamAbbrev;
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 2027;
+        state.team_stats.team_picker.current_team = TeamAbbrev::MTL;
+        let stats = || {
+            crate::models::team_stats::TeamStatsResponse::from_json(
+                r#"{"skaters":[],"goalies":[]}"#,
+            )
+            .unwrap()
+        };
+
+        // Previously selected team
+        state.handle_event(AppEvent::TeamStatsRegularSeasonUpdate {
+            team: TeamAbbrev::TOR,
+            year: 2027,
+            stats: stats(),
+        });
+        // Previously selected year
+        state.handle_event(AppEvent::TeamStatsPlayoffsUpdate {
+            team: TeamAbbrev::MTL,
+            year: 2026,
+            stats: stats(),
+        });
+        state.handle_event(AppEvent::TeamStatsOutOfRange {
+            team: TeamAbbrev::TOR,
+            year: 2027,
+            message: "stale".to_string(),
+        });
+        assert!(state.team_stats.regular_season_team_stats_data.is_none());
+        assert!(state.team_stats.playoffs_team_stats_data.is_none());
+        assert!(state.team_stats.out_of_range.is_none());
+
+        state.handle_event(AppEvent::TeamStatsRegularSeasonUpdate {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            stats: stats(),
+        });
+        assert!(state.team_stats.regular_season_team_stats_data.is_some());
+    }
+
+    #[test]
+    fn late_bracket_for_another_year_is_ignored() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 1930;
+        let bracket =
+            || crate::models::playoffs::bracket::BracketResponse::from_json("{}").unwrap();
+        state.handle_event(AppEvent::BracketUpdate {
+            year: 2027,
+            bracket: bracket(),
+        });
+        assert!(state.playoffs.bracket_data.is_none());
+
+        state.handle_event(AppEvent::BracketUpdate {
+            year: 1930,
+            bracket: bracket(),
+        });
+        assert!(state.playoffs.bracket_data.is_some());
     }
 }

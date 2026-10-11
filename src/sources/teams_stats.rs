@@ -60,7 +60,11 @@ impl TeamStatsSource {
                     );
                     log::debug!("Requested team-stats year is after latest season: {}", msg);
                     let _ = tx
-                        .send(AppEvent::TeamStatsOutOfRange { message: msg })
+                        .send(AppEvent::TeamStatsOutOfRange {
+                            team: self.current_team,
+                            year: self.current_year,
+                            message: msg,
+                        })
                         .await;
                     return;
                 }
@@ -75,7 +79,11 @@ impl TeamStatsSource {
                         msg
                     );
                     let _ = tx
-                        .send(AppEvent::TeamStatsOutOfRange { message: msg })
+                        .send(AppEvent::TeamStatsOutOfRange {
+                            team: self.current_team,
+                            year: self.current_year,
+                            message: msg,
+                        })
                         .await;
                     return;
                 }
@@ -103,7 +111,11 @@ impl TeamStatsSource {
                     );
                     log::debug!("Team stats 404: {}", msg);
                     let _ = tx
-                        .send(AppEvent::TeamStatsOutOfRange { message: msg })
+                        .send(AppEvent::TeamStatsOutOfRange {
+                            team: self.current_team,
+                            year: self.current_year,
+                            message: msg,
+                        })
                         .await;
                     return;
                 }
@@ -121,7 +133,11 @@ impl TeamStatsSource {
                                 .goalies
                                 .sort_by_key(|s| std::cmp::Reverse(s.games_played));
                             let _ = tx
-                                .send(AppEvent::TeamStatsRegularSeasonUpdate(parsed_team_stats))
+                                .send(AppEvent::TeamStatsRegularSeasonUpdate {
+                                    team: self.current_team,
+                                    year: self.current_year,
+                                    stats: parsed_team_stats,
+                                })
                                 .await;
                             log::debug!("Sent regular season team stats data to app");
                         }
@@ -155,7 +171,11 @@ impl TeamStatsSource {
                                 .goalies
                                 .sort_by_key(|s| std::cmp::Reverse(s.games_played));
                             let _ = tx
-                                .send(AppEvent::TeamStatsPlayoffsUpdate(parsed_team_stats))
+                                .send(AppEvent::TeamStatsPlayoffsUpdate {
+                                    team: self.current_team,
+                                    year: self.current_year,
+                                    stats: parsed_team_stats,
+                                })
                                 .await;
                             log::debug!("Sent playoffs team stats data to app");
                         }

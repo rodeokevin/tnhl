@@ -2,6 +2,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 
 use crate::models::{
+    TeamAbbrev,
     games::play_by_play::PlaysResponse,
     games::{boxscore::BoxscoreResponse, game_story::GameStoryResponse, games::GamesResponse},
     playoffs::{bracket::BracketResponse, series::SeriesResponse},
@@ -138,15 +139,29 @@ pub enum AppEvent {
         seasons: Vec<SeasonBounds>,
     },
     StandingsUpdate {
+        /// The date that was requested, YYYY-MM-DD
+        date: String,
         standings: StandingsResponse,
         season: Option<SeasonBounds>,
     },
     StandingsOutOfRange {
+        /// The date that was requested, YYYY-MM-DD
+        date: String,
         message: String,
     },
-    TeamStatsRegularSeasonUpdate(TeamStatsResponse),
-    TeamStatsPlayoffsUpdate(TeamStatsResponse),
+    TeamStatsRegularSeasonUpdate {
+        team: TeamAbbrev,
+        year: i32,
+        stats: TeamStatsResponse,
+    },
+    TeamStatsPlayoffsUpdate {
+        team: TeamAbbrev,
+        year: i32,
+        stats: TeamStatsResponse,
+    },
     TeamStatsOutOfRange {
+        team: TeamAbbrev,
+        year: i32,
         message: String,
     },
     GamesUpdate {
@@ -170,7 +185,11 @@ pub enum AppEvent {
         game_id: u32,
         parsed_game_story: GameStoryResponse,
     },
-    BracketUpdate(BracketResponse),
+    BracketUpdate {
+        /// Season end year the bracket was fetched for
+        year: i32,
+        bracket: BracketResponse,
+    },
     SeriesUpdate {
         /// Season end year the series was fetched for
         year: i32,
