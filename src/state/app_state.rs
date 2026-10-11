@@ -217,11 +217,27 @@ impl AppState {
                     })
                     .collect();
                 self.games.games_data = Some(parsed_games);
+                self.games.unavailable = None;
                 self.games.clamp_selected_game();
                 self.sync_selected_game();
                 self.total_goals_tx
                     .try_send(TotalGoalsCommand::SetTargets(total_goals_targets))
                     .ok();
+            }
+            AppEvent::GamesUnavailable { message } => {
+                // Keep games already shown for this date; a failed refresh
+                // shouldn't replace them
+                if self.games.games_data.is_none() {
+                    log::debug!("Games unavailable: {}", message);
+                    self.games.games_data = Some(GamesResponse {
+                        prev_date: None,
+                        current_date: None,
+                        next_date: None,
+                        games: Vec::new(),
+                    });
+                    self.games.unavailable = Some(message);
+                    self.sync_selected_game();
+                }
             }
             AppEvent::BoxscoreUpdate {
                 game_id,
@@ -912,5 +928,45 @@ mod tests {
             }
             _ => panic!("expected a scoreboard interval update"),
         }
+    }
+
+    fn unavailable() -> AppEvent {
+        AppEvent::GamesUnavailable {
+            message: "No game data available for this date.".to_string(),
+        }
+    }
+
+    #[test]
+    fn games_unavailable_shows_message_instead_of_loading() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.games.games_data = None;
+        state.handle_event(unavailable());
+
+        let data = state
+            .games
+            .games_data
+            .as_ref()
+            .expect("falls back to no games");
+        assert!(data.games.is_empty());
+        assert_eq!(
+            state.games.unavailable.as_deref(),
+            Some("No game data available for this date.")
+        );
+    }
+
+    #[test]
+    fn games_unavailable_keeps_already_loaded_games() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.games.games_data = Some(GamesResponse {
+            prev_date: Some("2026-10-09".to_string()),
+            current_date: Some("2026-10-10".to_string()),
+            next_date: None,
+            games: Vec::new(),
+        });
+        state.handle_event(unavailable());
+
+        let data = state.games.games_data.as_ref().unwrap();
+        assert_eq!(data.current_date.as_deref(), Some("2026-10-10"));
+        assert_eq!(state.games.unavailable, None);
     }
 }

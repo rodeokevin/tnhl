@@ -69,6 +69,9 @@ pub struct GamesState {
     pub visible_rows: usize,
 
     pub games_data: Option<GamesResponse>,
+    /// Shown instead of "No games" when the scoreboard for the date couldn't be
+    /// loaded
+    pub unavailable: Option<String>,
     pub boxscore_data: HashMap<u32, BoxscoreResponse>,
     pub game_story_data: HashMap<u32, GameStoryResponse>,
     pub plays_data: HashMap<u32, PlaysResponse>,
@@ -104,6 +107,7 @@ impl Default for GamesState {
             visible_rows: 0,
 
             games_data: None,
+            unavailable: None,
             boxscore_data: HashMap::new(),
             game_story_data: HashMap::new(),
             plays_data: HashMap::new(),
@@ -188,6 +192,7 @@ impl GamesState {
     }
     /// Reset all state in games to default
     pub fn reset_state(&mut self) {
+        self.unavailable = None;
         self.reset_game_state();
         self.selected_game_index = 0;
         self.plays_visible = false;

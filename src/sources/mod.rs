@@ -151,6 +151,10 @@ pub enum AppEvent {
     GamesUpdate {
         parsed_games: GamesResponse,
     },
+    /// The scoreboard for the current date couldn't be loaded
+    GamesUnavailable {
+        message: String,
+    },
     BoxscoreUpdate {
         game_id: u32,
         parsed_boxscore: BoxscoreResponse,

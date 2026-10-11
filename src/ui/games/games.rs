@@ -152,7 +152,13 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
 
         frame.render_widget(tabs, tab_content_chunks[0]);
     } else if num_matchups == 0 {
-        let tabs = Tabs::new(vec!["No games today :("])
+        let message = app
+            .state
+            .games
+            .unavailable
+            .clone()
+            .unwrap_or_else(|| "No games today :(".to_string());
+        let tabs = Tabs::new(vec![message])
             .block(make_block())
             .highlight_style(Style::default());
 

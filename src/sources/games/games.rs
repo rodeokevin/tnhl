@@ -36,6 +36,16 @@ impl GamesSource {
 
         match send_request(self.client.get(&url)).await {
             Ok(resp) => {
+                // The NHL API returns a 500 for some dates it has no usable
+                // scoreboard for (e.g. parts of the 1987 Canada Cup)
+                if resp.status().is_server_error() {
+                    let _ = tx
+                        .send(AppEvent::GamesUnavailable {
+                            message: "No game data available for this date.".to_string(),
+                        })
+                        .await;
+                    return;
+                }
                 if let Ok(body) = resp.text().await {
                     match GamesResponse::from_json(&body) {
                         Ok(parsed_games) => {
