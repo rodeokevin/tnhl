@@ -25,6 +25,8 @@ pub struct PlaceName {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Display, EnumString, Deserialize)]
 #[strum(ascii_case_insensitive)]
+// Variant names are the NHL's own uppercase team codes
+#[allow(clippy::upper_case_acronyms)]
 pub enum TeamAbbrev {
     AFM, // Atlanta Flames (defunct)
     ANA, // Anaheim Ducks
@@ -96,7 +98,7 @@ pub enum TeamAbbrev {
     WSH,
     // ---------------------------------------------------------------------
     // Non-franchise teams from special events. These only appear on game
-    // and scoring data. Keep them after `WSH`: `is_franchise` relies on it.
+    // and scoring data. Every code must be classified in `is_franchise`.
     // ---------------------------------------------------------------------
     // All-Star, Young Stars, and skills-event teams
     #[serde(rename = "1ST")]
@@ -210,13 +212,29 @@ pub enum TeamAbbrev {
 }
 
 impl TeamAbbrev {
-    /// The first non-franchise (special event) variant.
-    const FIRST_EVENT_TEAM: TeamAbbrev = TeamAbbrev::FirstAllStars;
-
     /// Whether this is an NHL franchise (current or defunct), as opposed to an
     /// All-Star, national, or exhibition team from a special event.
+    ///
+    /// Deliberately exhaustive with no wildcard, so adding a code fails to
+    /// compile until it's classified here.
     pub fn is_franchise(&self) -> bool {
-        (*self as u16) < (Self::FIRST_EVENT_TEAM as u16)
+        use TeamAbbrev::*;
+        match self {
+            AFM | ANA | ARI | ATL | BOS | BRK | BUF | CAR | CAT | CBJ | CBN | CGS | CGY | CHI
+            | CLE | CLR | COL | DAL | DCG | DET | DFL | EDE | EDM | FLA | HAM | HFD | KCS | LAK
+            | MIN | MMR | MNS | MTL | MWN | NJD | NSH | NYA | NYI | NYR | OAK | OTT | PHI | PHX
+            | PIR | PIT | QBD | QUA | QUE | SEA | SEN | SLE | SJS | SMT | STL | TAN | TBD | TBL
+            | TOR | TSP | UTA | VAN | VGK | VIC | VMI | VMA | WIN | WPG | WSH => true,
+
+            FirstAllStars | SecondAllStars | ALL | ASB | ASE | ASR | ASW | AWA | BLK | BLU
+            | CEN | CMP | CWA | HGS | KLS | KNG | MAT | MCD | MKN | NorthAmericaAllStars | PAC
+            | RED | WHT | WLS | WRL | YSE | YSW | AUT | BLR | CAN | CZE | DEN | DEU | EUR | FIN
+            | FRA | FRG | GER | ITA | JPN | KAZ | LAT | NAT | NOR | RUS | SLO | SUI | SVK | SWE
+            | TCH | UKR | URS | USA | AIK | BFT | BRY | CSK | DAV | DDF | DIN | DJU | EIS | EVZ
+            | FAR | FEL | GOT | GRA | HBF | HEL | IFK | ILV | KAR | KHI | KLA | KLH | LAU | LIB
+            | LIN | LNY | MAL | MAN | MET | MOD | MOS | MUN | PET | PHT | RBS | RIG | SCB | SKA
+            | SLV | SOK | SPA | SPR | SWI | TAP | TXS | VFF | ZUR => false,
+        }
     }
 }
 
