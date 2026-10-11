@@ -209,11 +209,60 @@ pub enum TeamAbbrev {
     TXS, // Texas Stars
     VFF, // Vastra Frolunda
     ZUR, // ZSC Lions Zurich
+
+    /// Unknown
+    #[serde(untagged)]
+    #[strum(default)]
+    Unknown(UnknownTeamCode),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownTeamCode {
+    bytes: [u8; Self::MAX_LEN],
+    len: u8,
+}
+
+impl UnknownTeamCode {
+    const MAX_LEN: usize = 8;
+
+    pub fn as_str(&self) -> &str {
+        // Only ever filled from a `&str` cut at a char boundary
+        std::str::from_utf8(&self.bytes[..self.len as usize]).unwrap_or_default()
+    }
+}
+
+impl From<&str> for UnknownTeamCode {
+    fn from(code: &str) -> Self {
+        let mut end = code.len().min(Self::MAX_LEN);
+        while !code.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut bytes = [0; Self::MAX_LEN];
+        bytes[..end].copy_from_slice(&code.as_bytes()[..end]);
+        Self {
+            bytes,
+            len: end as u8,
+        }
+    }
+}
+
+impl std::fmt::Display for UnknownTeamCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for UnknownTeamCode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let code = String::deserialize(deserializer)?;
+        Ok(Self::from(code.as_str()))
+    }
 }
 
 impl TeamAbbrev {
     /// Whether this is an NHL franchise (current or defunct), as opposed to an
-    /// All-Star, national, or exhibition team from a special event.
+    /// All-Star, national, or exhibition team from a special event, or a code
+    /// the app doesn't recognize.
     ///
     /// Deliberately exhaustive with no wildcard, so adding a code fails to
     /// compile until it's classified here.
@@ -234,6 +283,8 @@ impl TeamAbbrev {
             | FAR | FEL | GOT | GRA | HBF | HEL | IFK | ILV | KAR | KHI | KLA | KLH | LAU | LIB
             | LIN | LNY | MAL | MAN | MET | MOD | MOS | MUN | PET | PHT | RBS | RIG | SCB | SKA
             | SLV | SOK | SPA | SPR | SWI | TAP | TXS | VFF | ZUR => false,
+
+            Unknown(_) => false,
         }
     }
 }
@@ -258,6 +309,37 @@ mod tests {
         assert_eq!(parse("1ST"), TeamAbbrev::FirstAllStars);
         assert_eq!(parse("N.A"), TeamAbbrev::NorthAmericaAllStars);
         assert_eq!(TeamAbbrev::NorthAmericaAllStars.to_string(), "N.A");
+    }
+
+    #[test]
+    fn unknown_codes_keep_their_text() {
+        let a = parse("QQQ");
+        let b = parse("XYZ");
+        assert_eq!(a.to_string(), "QQQ");
+        assert_ne!(a, b, "different unknown teams must not compare equal");
+        assert_eq!(a, parse("QQQ"));
+        assert!(!a.is_franchise());
+    }
+
+    #[test]
+    fn known_codes_still_parse_to_their_variant() {
+        assert_eq!(parse("MTL"), TeamAbbrev::MTL);
+        assert!(matches!(parse("Unknown"), TeamAbbrev::Unknown(_)));
+    }
+
+    #[test]
+    fn long_unknown_codes_are_truncated_safely() {
+        assert_eq!(parse("ABCDEFGHIJK").to_string(), "ABCDEFGH");
+        // Never splits a multi-byte character
+        assert_eq!(parse("ÉÉÉÉÉ").to_string(), "ÉÉÉÉ");
+    }
+
+    #[test]
+    fn unknown_codes_are_rejected_by_from_str_callers() {
+        // FromStr falls back to Unknown instead of failing; callers that need a
+        // real team check is_franchise
+        let team: TeamAbbrev = "ZZZ".parse().unwrap();
+        assert!(!team.is_franchise());
     }
 
     #[test]
