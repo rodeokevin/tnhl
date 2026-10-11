@@ -1,4 +1,6 @@
-use chrono::{Datelike, NaiveDate, ParseError, Utc};
+use chrono::{NaiveDate, ParseError, Utc};
+
+use crate::models::standings::season_end_year_fallback;
 use chrono_tz::Tz;
 
 /// Get user input for the date and store whether it's valid.
@@ -23,10 +25,12 @@ pub struct DateState {
 
 impl DateState {
     /// Validate the input date
-    pub fn validate_input_date(&mut self, tz: Tz) -> Result<NaiveDate, ParseError> {
+    pub fn validate_input_date(&mut self) -> Result<NaiveDate, ParseError> {
         let input: String = std::mem::take(&mut self.text);
         let date = match input.as_str() {
-            "t" | "today" => Ok(Utc::now().with_timezone(&tz).date_naive()),
+            // The NHL game day, which stays on the previous date until late
+            // games finish, rather than the wall-clock date
+            "t" | "today" => Ok(self.today),
             _ => NaiveDate::parse_from_str(input.as_str(), "%Y-%m-%d"),
         };
         self.is_valid = date.is_ok();
@@ -43,9 +47,9 @@ impl DateState {
 
         let year = match input.as_str() {
             // Use the bounds-resolved current season if available
-            "t" | "today" => Ok(self
-                .current_season_year
-                .unwrap_or_else(|| Utc::now().with_timezone(&tz).year())),
+            "t" | "today" => Ok(self.current_season_year.unwrap_or_else(|| {
+                season_end_year_fallback(Utc::now().with_timezone(&tz).date_naive())
+            })),
             _ => input.parse::<i32>().map_err(|_| ()),
         };
 
@@ -59,20 +63,31 @@ impl DateState {
     }
 
     /// Set the date using Left/Right arrow keys to move a single day at a time
+    /// Stops at the earliest/latest representable date instead of overflowing
     pub fn set_date_with_arrows(&mut self, forward: bool) -> NaiveDate {
-        match forward {
-            true => self.date_selection_offset += 1,
-            false => self.date_selection_offset -= 1,
+        let offset = self.date_selection_offset + if forward { 1 } else { -1 };
+        match self.date.checked_add_signed(chrono::Duration::days(offset)) {
+            Some(date) => {
+                self.date_selection_offset = offset;
+                date
+            }
+            None => self
+                .date
+                .checked_add_signed(chrono::Duration::days(self.date_selection_offset))
+                .unwrap_or(self.date),
         }
-        self.date + chrono::Duration::days(self.date_selection_offset)
     }
     /// Set the year using Left/Right arrow keys
+    /// Stops at the smallest/largest year instead of overflowing
     pub fn set_year_with_arrows(&mut self, forward: bool) -> i32 {
-        match forward {
-            true => self.year_selection_offset += 1,
-            false => self.year_selection_offset -= 1,
+        let offset = self.year_selection_offset + if forward { 1 } else { -1 };
+        match self.year.checked_add(offset) {
+            Some(year) => {
+                self.year_selection_offset = offset;
+                year
+            }
+            None => self.year.saturating_add(self.year_selection_offset),
         }
-        self.year + self.year_selection_offset
     }
     /// Format the data to be used in the title of a border;
     pub fn format_date_border_title(&self) -> String {
@@ -102,5 +117,45 @@ impl Default for DateState {
             date_selection_offset: 0,
             year_selection_offset: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn today_shortcut_uses_the_nhl_game_day() {
+        // Just after midnight the NHL game day is still the previous date
+        let game_day = NaiveDate::from_ymd_opt(2026, 10, 10).unwrap();
+        let mut state = DateState {
+            today: game_day,
+            text: "t".to_string(),
+            ..DateState::default()
+        };
+        assert_eq!(state.validate_input_date(), Ok(game_day));
+    }
+
+    #[test]
+    fn arrows_stop_at_the_latest_date_instead_of_panicking() {
+        let mut state = DateState {
+            date: NaiveDate::MAX,
+            ..DateState::default()
+        };
+        assert_eq!(state.set_date_with_arrows(true), NaiveDate::MAX);
+        assert_eq!(
+            state.set_date_with_arrows(false),
+            NaiveDate::MAX.pred_opt().unwrap()
+        );
+    }
+
+    #[test]
+    fn arrows_stop_at_the_largest_year_instead_of_overflowing() {
+        let mut state = DateState {
+            year: i32::MAX,
+            ..DateState::default()
+        };
+        assert_eq!(state.set_year_with_arrows(true), i32::MAX);
+        assert_eq!(state.set_year_with_arrows(false), i32::MAX - 1);
     }
 }

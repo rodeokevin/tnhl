@@ -154,6 +154,8 @@ pub enum AppEvent {
     },
     /// The scoreboard for the current date couldn't be loaded
     GamesUnavailable {
+        /// The requested date, YYYY-MM-DD
+        date: String,
         message: String,
     },
     BoxscoreUpdate {
@@ -169,12 +171,18 @@ pub enum AppEvent {
         parsed_game_story: GameStoryResponse,
     },
     BracketUpdate(BracketResponse),
-    SeriesUpdate(SeriesResponse),
+    SeriesUpdate {
+        /// Season end year the series was fetched for
+        year: i32,
+        parsed_series: SeriesResponse,
+    },
     TotalGoalsUpdate {
         game_id: u32,
         parsed_series: SeriesResponse,
     },
     BracketSeriesUpdate {
+        /// Season id the series was fetched for, e.g. "19291930"
+        season: String,
         letter: String,
         parsed_series: SeriesResponse,
     },

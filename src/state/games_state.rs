@@ -192,7 +192,6 @@ impl GamesState {
     }
     /// Reset all state in games to default
     pub fn reset_state(&mut self) {
-        self.unavailable = None;
         self.reset_game_state();
         self.selected_game_index = 0;
         self.plays_visible = false;

@@ -1,10 +1,12 @@
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::{AppEvent, Source, send_request};
-use crate::models::standings::{SeasonBounds, StandingsSeasonResponse, season_end_year_for_date};
+use crate::models::standings::{
+    SeasonBounds, StandingsSeasonResponse, season_end_year_fallback, season_end_year_for_date,
+};
 
 /// How long to wait between retries if the season bounds can't be fetched.
 const RETRY_INTERVAL: Duration = Duration::from_secs(30);
@@ -50,7 +52,7 @@ impl SeasonSource {
 
     /// Fallback season end year when the bounds are unavailable
     fn fallback_year(&self) -> i32 {
-        self.today.year()
+        season_end_year_fallback(self.today)
     }
 
     /// Emit the resolved bounds and the current season end year

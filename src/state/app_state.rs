@@ -159,10 +159,17 @@ impl AppState {
         match event {
             AppEvent::SeasonResolved { year } => {
                 log::debug!("Season resolved to end year {}", year);
-                self.date_state.year = year;
+                // This can arrive twice: a fallback year, then the real one after
+                // a retry. Only the first sets the selected year; a retry just
+                // updates what "today" in the year picker jumps to, so the
+                // screen never changes without user input.
+                let first = self.date_state.current_season_year.is_none();
                 self.date_state.current_season_year = Some(year);
-                // Fetch team stats / playoffs for the resolved season.
-                self.handle_year_change();
+                if first {
+                    self.date_state.year = year;
+                    // Fetch team stats / playoffs for the resolved season.
+                    self.handle_year_change();
+                }
             }
             AppEvent::TodayChanged { date } => {
                 log::debug!("Today's game day is now {}", date);
@@ -197,6 +204,14 @@ impl AppState {
                 self.standings.season = None;
                 self.standings.out_of_range = Some(message);
             }
+            AppEvent::GamesUpdate { parsed_games }
+                if !self.is_selected_date(parsed_games.current_date.as_deref()) =>
+            {
+                log::debug!("Ignoring games for {:?}", parsed_games.current_date);
+            }
+            AppEvent::GamesUnavailable { date, .. } if !self.is_selected_date(Some(&date)) => {
+                log::debug!("Ignoring unavailable games for {}", date);
+            }
             AppEvent::GamesUpdate { parsed_games } => {
                 self.set_fetch_interval(self.should_poll_fast_games(&parsed_games));
                 log::debug!("Updating games data");
@@ -224,7 +239,7 @@ impl AppState {
                     .try_send(TotalGoalsCommand::SetTargets(total_goals_targets))
                     .ok();
             }
-            AppEvent::GamesUnavailable { message } => {
+            AppEvent::GamesUnavailable { message, .. } => {
                 // Keep games already shown for this date; a failed refresh
                 // shouldn't replace them
                 if self.games.games_data.is_none() {
@@ -284,30 +299,45 @@ impl AppState {
                 log::debug!("Updating playoff bracket data");
                 // Two-game total-goals series last used in 1936
                 const LAST_TOTAL_GOALS_YEAR: i32 = 1936;
-                let bracket_targets: Vec<BracketSeriesTarget> = if self.date_state.year
-                    <= LAST_TOTAL_GOALS_YEAR
-                {
-                    let season = format!("{}{}", self.date_state.year - 1, self.date_state.year);
-                    parsed_bracket
-                        .series
-                        .iter()
-                        .filter(|s| !s.series_letter.is_empty())
-                        .map(|s| BracketSeriesTarget {
-                            season: season.clone(),
-                            letter: s.series_letter.clone(),
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                };
+                let bracket_targets: Vec<BracketSeriesTarget> =
+                    if self.date_state.year <= LAST_TOTAL_GOALS_YEAR {
+                        let season = self.selected_season_id();
+                        parsed_bracket
+                            .series
+                            .iter()
+                            .filter(|s| !s.series_letter.is_empty())
+                            .map(|s| BracketSeriesTarget {
+                                season: season.clone(),
+                                letter: s.series_letter.clone(),
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
                 self.playoffs.bracket_data = Some(parsed_bracket);
                 self.bracket_series_tx
                     .try_send(BracketSeriesCommand::SetTargets(bracket_targets))
                     .ok();
             }
-            AppEvent::SeriesUpdate(parsed_series) => {
-                log::debug!("Updating series data");
-                self.playoffs.series_data = Some(parsed_series);
+            AppEvent::SeriesUpdate {
+                year,
+                parsed_series,
+            } => {
+                // Drop responses for a series that's no longer open, including
+                // the same letter from a previously selected year
+                let selected = self.playoffs.selected_series.map(|c| c.to_string());
+                if year == self.date_state.year
+                    && selected.as_deref() == Some(parsed_series.series_letter.as_str())
+                {
+                    log::debug!("Updating series data");
+                    self.playoffs.series_data = Some(parsed_series);
+                } else {
+                    log::debug!(
+                        "Ignoring series {} for {}",
+                        parsed_series.series_letter,
+                        year
+                    );
+                }
             }
             AppEvent::TotalGoalsUpdate {
                 game_id,
@@ -317,13 +347,19 @@ impl AppState {
                 self.games.total_goals_data.insert(game_id, parsed_series);
             }
             AppEvent::BracketSeriesUpdate {
+                season,
                 letter,
                 parsed_series,
             } => {
-                log::debug!("Updating bracket series for {}", letter);
-                self.playoffs
-                    .bracket_series_data
-                    .insert(letter, parsed_series);
+                // Letters repeat every year, so drop results for another year
+                if season == self.selected_season_id() {
+                    log::debug!("Updating bracket series for {}", letter);
+                    self.playoffs
+                        .bracket_series_data
+                        .insert(letter, parsed_series);
+                } else {
+                    log::debug!("Ignoring bracket series {} for {}", letter, season);
+                }
             }
             AppEvent::Input(key_event) => {
                 log::trace!("Key event detected: {:?}", key_event);
@@ -489,6 +525,7 @@ impl AppState {
                 self.playoffs.exit_series();
                 self.playoffs.series_data = None;
                 self.playoffs.focus = PlayoffsFocus::Bracket;
+                self.series_tx.try_send(SeriesCommand::SetSeries(None)).ok();
             }
 
             // Date/year picker actions
@@ -510,16 +547,22 @@ impl AppState {
                 self.focus = self.previous_focus;
             }
             Action::UpdateDate => {
+                let prev = self.date_state.date;
                 if self.try_update_date_from_input().is_ok() {
-                    self.handle_date_change();
+                    if self.date_state.date != prev {
+                        self.handle_date_change();
+                    }
                     self.focus = self.previous_focus;
                 }
             }
             Action::YearLeft => self.date_state.move_year_selector_by_arrow(false),
             Action::YearRight => self.date_state.move_year_selector_by_arrow(true),
             Action::UpdateYear => {
+                let prev = self.date_state.year;
                 if self.try_update_year_from_input().is_ok() {
-                    self.handle_year_change();
+                    if self.date_state.year != prev {
+                        self.handle_year_change();
+                    }
                     self.focus = self.previous_focus;
                 }
             }
@@ -572,7 +615,7 @@ impl AppState {
         }
     }
     fn try_update_date_from_input(&mut self) -> Result<(), ParseError> {
-        let valid_date = self.date_state.validate_input_date(self.timezone)?;
+        let valid_date = self.date_state.validate_input_date()?;
         self.date_state.set_date_from_valid_input(valid_date);
         Ok(())
     }
@@ -593,7 +636,7 @@ impl AppState {
             self.games.boxscore_data.clear();
             self.games.game_story_data.clear();
             self.games.plays_data.clear();
-            self.games.total_goals_data.clear();
+            self.games.unavailable = None;
             self.games.reset_state();
             self.sync_selected_game();
         }
@@ -624,6 +667,8 @@ impl AppState {
             // Clear old data and reset state
             self.playoffs.bracket_data = None;
             self.playoffs.series_data = None;
+            // Keyed by series letter, which repeats every year
+            self.playoffs.bracket_series_data.clear();
             self.playoffs.reset_state();
         }
         if let Err(e) = &series_res {
@@ -668,7 +713,7 @@ impl AppState {
         let res = self.series_tx.try_send(SeriesCommand::SetSeries(series));
 
         if let Err(e) = &res {
-            log::error!("Failed to send TeamStatsCommand::SetTeam: {:?}", e);
+            log::error!("Failed to send SeriesCommand::SetSeries: {:?}", e);
         } else {
             self.playoffs.enter_series();
         }
@@ -753,6 +798,21 @@ impl AppState {
         self.standings.reset_state();
         self.team_stats.reset_state();
         self.playoffs.reset_state();
+        // The selected game and series were reset, so point the sources at
+        // them too
+        self.sync_selected_game();
+        self.series_tx.try_send(SeriesCommand::SetSeries(None)).ok();
+    }
+
+    /// The selected season as the API's id, e.g. "20262027"
+    fn selected_season_id(&self) -> String {
+        format!("{}{}", self.date_state.year - 1, self.date_state.year)
+    }
+
+    /// Whether a response for `date` (YYYY-MM-DD) belongs to the selected
+    /// date. Responses without a date are assumed current.
+    fn is_selected_date(&self, date: Option<&str>) -> bool {
+        date.is_none_or(|d| d == self.date_state.date.to_string())
     }
 
     /// Scoreboard interval: fast only for today, and faster while games are on.
@@ -930,9 +990,19 @@ mod tests {
         }
     }
 
-    fn unavailable() -> AppEvent {
+    fn unavailable(state: &AppState) -> AppEvent {
         AppEvent::GamesUnavailable {
+            date: state.date_state.date.to_string(),
             message: "No game data available for this date.".to_string(),
+        }
+    }
+
+    fn games_on(date: &str) -> GamesResponse {
+        GamesResponse {
+            prev_date: None,
+            current_date: Some(date.to_string()),
+            next_date: None,
+            games: Vec::new(),
         }
     }
 
@@ -940,7 +1010,7 @@ mod tests {
     fn games_unavailable_shows_message_instead_of_loading() {
         let mut state = test_state(tokio::sync::mpsc::channel(8).0);
         state.games.games_data = None;
-        state.handle_event(unavailable());
+        state.handle_event(unavailable(&state));
 
         let data = state
             .games
@@ -963,10 +1033,119 @@ mod tests {
             next_date: None,
             games: Vec::new(),
         });
-        state.handle_event(unavailable());
+        state.handle_event(unavailable(&state));
 
         let data = state.games.games_data.as_ref().unwrap();
         assert_eq!(data.current_date.as_deref(), Some("2026-10-10"));
         assert_eq!(state.games.unavailable, None);
+    }
+
+    #[test]
+    fn games_for_another_date_are_ignored() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.games.games_data = None;
+        state.handle_event(AppEvent::GamesUpdate {
+            parsed_games: games_on("1999-01-01"),
+        });
+        state.handle_event(AppEvent::GamesUnavailable {
+            date: "1999-01-01".to_string(),
+            message: "stale".to_string(),
+        });
+        assert!(state.games.games_data.is_none());
+        assert_eq!(state.games.unavailable, None);
+
+        let today = state.date_state.date.to_string();
+        state.handle_event(AppEvent::GamesUpdate {
+            parsed_games: games_on(&today),
+        });
+        assert!(state.games.games_data.is_some());
+    }
+
+    #[test]
+    fn unavailable_message_survives_tab_switch() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.games.games_data = None;
+        state.handle_event(unavailable(&state));
+        state.reset_app_state();
+        assert!(state.games.unavailable.is_some());
+    }
+
+    #[test]
+    fn first_season_resolution_sets_selected_year() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.handle_event(AppEvent::SeasonResolved { year: 2027 });
+        assert_eq!(state.date_state.year, 2027);
+        assert_eq!(state.date_state.current_season_year, Some(2027));
+    }
+
+    #[test]
+    fn retried_season_resolution_does_not_change_selected_year() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        // Fallback year arrives first and is applied
+        state.handle_event(AppEvent::SeasonResolved { year: 2026 });
+
+        // The real season arrives after a retry: only "today" moves
+        state.handle_event(AppEvent::SeasonResolved { year: 2027 });
+        assert_eq!(state.date_state.year, 2026);
+        assert_eq!(state.date_state.current_season_year, Some(2027));
+
+        // Same when the user has picked another year in between
+        state.date_state.year = 1995;
+        state.handle_event(AppEvent::SeasonResolved { year: 2028 });
+        assert_eq!(state.date_state.year, 1995);
+    }
+
+    fn series(letter: &str) -> crate::models::playoffs::series::SeriesResponse {
+        let seed = r#"{"id":1,"name":{"default":"A"},"abbrev":"MTL","placeName":{"default":"A"},"record":"0-0","seriesWins":0,"seed":1}"#;
+        let json = format!(
+            r#"{{"round":1,"roundAbbrev":"R1","roundLabel":"1st Round","seriesLetter":"{letter}","neededToWin":4,"length":7,"bottomSeedTeam":{seed},"topSeedTeam":{seed},"games":[]}}"#
+        );
+        crate::models::playoffs::series::SeriesResponse::from_json(&json).unwrap()
+    }
+
+    #[test]
+    fn series_update_requires_open_series_and_selected_year() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 1930;
+        state.playoffs.selected_series = Some('A');
+
+        // Same letter, previously selected year: ignored
+        state.handle_event(AppEvent::SeriesUpdate {
+            year: 1929,
+            parsed_series: series("A"),
+        });
+        assert!(state.playoffs.series_data.is_none());
+
+        // Another series: ignored
+        state.handle_event(AppEvent::SeriesUpdate {
+            year: 1930,
+            parsed_series: series("B"),
+        });
+        assert!(state.playoffs.series_data.is_none());
+
+        state.handle_event(AppEvent::SeriesUpdate {
+            year: 1930,
+            parsed_series: series("A"),
+        });
+        assert!(state.playoffs.series_data.is_some());
+    }
+
+    #[test]
+    fn bracket_series_update_requires_selected_season() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 1931;
+        state.handle_event(AppEvent::BracketSeriesUpdate {
+            season: "19291930".to_string(),
+            letter: "A".to_string(),
+            parsed_series: series("A"),
+        });
+        assert!(state.playoffs.bracket_series_data.is_empty());
+
+        state.handle_event(AppEvent::BracketSeriesUpdate {
+            season: "19301931".to_string(),
+            letter: "A".to_string(),
+            parsed_series: series("A"),
+        });
+        assert!(state.playoffs.bracket_series_data.contains_key("A"));
     }
 }

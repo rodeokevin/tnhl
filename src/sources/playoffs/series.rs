@@ -54,7 +54,12 @@ impl SeriesSource {
                         match SeriesResponse::from_json(&body) {
                             Ok(parsed_series) => {
                                 log::debug!("Series data successfully parsed");
-                                let _ = tx.send(AppEvent::SeriesUpdate(parsed_series)).await;
+                                let _ = tx
+                                    .send(AppEvent::SeriesUpdate {
+                                        year: self.current_year,
+                                        parsed_series,
+                                    })
+                                    .await;
                                 log::debug!("Sent series data to app");
                             }
                             Err(e) => log::error!("Failed to parse series: {}", e),
@@ -100,7 +105,8 @@ impl Source for SeriesSource {
                                     interval.reset();
                                 }
                             } else {
-                                log::debug!("Series letter not set because it was None");
+                                // Series closed: stop polling it
+                                self.series_letter = None;
                             }
                         }
                     }

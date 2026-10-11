@@ -40,7 +40,6 @@ impl PlayoffsState {
         self.reset_scoring_scroll();
         self.selected_series = None;
         self.series_data = None;
-        self.bracket_series_data.clear();
         self.saved_bracket_scroll = None;
         self.focus = PlayoffsFocus::default();
     }

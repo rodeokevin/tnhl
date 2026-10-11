@@ -54,6 +54,7 @@ impl BracketSeriesSource {
                                 Ok(parsed_series) => {
                                     let _ = tx
                                         .send(AppEvent::BracketSeriesUpdate {
+                                            season: target.season.clone(),
                                             letter: target.letter.clone(),
                                             parsed_series,
                                         })

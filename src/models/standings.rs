@@ -165,6 +165,18 @@ impl SeasonBounds {
     }
 }
 
+/// Best guess at the current season's end year without the season bounds.
+/// Seasons end the following year, and preseason games can start in
+/// September, so September to December belong to next year's season.
+pub fn season_end_year_fallback(date: chrono::NaiveDate) -> i32 {
+    use chrono::Datelike;
+    if date.month() >= 9 {
+        date.year() + 1
+    } else {
+        date.year()
+    }
+}
+
 /// Resolve the NHL "season end year" for a given date from the season bounds.
 ///
 /// This is the year used to build season identifiers (e.g. `20262027`) for
@@ -173,7 +185,6 @@ impl SeasonBounds {
 /// - if `date` is in an offseason gap or after the latest season, the most
 ///   recent completed season's end year
 /// - if `date` is before the earliest season, the earliest season's end year.
-///
 pub fn season_end_year_for_date(date: chrono::NaiveDate, seasons: &[SeasonBounds]) -> Option<i32> {
     // Season containing the date.
     if let Some(s) = seasons.iter().find(|s| match (s.start(), s.end()) {
@@ -326,6 +337,17 @@ mod tests {
 
     fn d(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn fallback_year_counts_september_onward_as_next_season() {
+        assert_eq!(season_end_year_fallback(d("2026-09-01")), 2027);
+        assert_eq!(season_end_year_fallback(d("2026-10-10")), 2027);
+        assert_eq!(season_end_year_fallback(d("2026-12-31")), 2027);
+        assert_eq!(season_end_year_fallback(d("2027-03-01")), 2027);
+        // Summer still points at the season that just ended
+        assert_eq!(season_end_year_fallback(d("2026-07-15")), 2026);
+        assert_eq!(season_end_year_fallback(d("2026-08-31")), 2026);
     }
 
     fn season(start: &str, end: &str) -> SeasonBounds {

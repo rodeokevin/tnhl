@@ -35,29 +35,39 @@ impl GamesSource {
     async fn fetch(&self, tx: &Sender<AppEvent>) {
         let url = format!("https://api-web.nhle.com/v1/score/{}", self.current_date);
 
-        match send_request(self.client.get(&url)).await {
-            Ok(resp) => {
-                // The NHL API returns a 500 for some dates it has no usable
-                // scoreboard for (e.g. parts of the 1987 Canada Cup)
-                if resp.status().is_server_error() {
-                    let _ = tx
-                        .send(AppEvent::GamesUnavailable {
-                            message: "No game data available for this date.".to_string(),
-                        })
-                        .await;
-                    return;
-                }
-                if let Ok(body) = resp.text().await {
-                    match GamesResponse::from_json(&body) {
-                        Ok(parsed_games) => {
-                            let _ = tx.send(AppEvent::GamesUpdate { parsed_games }).await;
-                        }
-                        Err(e) => log::error!("Failed to parse games: {}", e),
-                    }
+        let resp = match send_request(self.client.get(&url)).await {
+            Ok(resp) => resp,
+            Err(err) => {
+                log::warn!("Failed to fetch games: {}", err);
+                return;
+            }
+        };
+
+        // An error status (e.g. the 500 the NHL API returns for parts of the
+        // 1987 Canada Cup) or an unreadable body would otherwise leave the tab
+        // loading forever
+        let parsed = if resp.status().is_success() {
+            match resp.text().await {
+                Ok(body) => GamesResponse::from_json(&body)
+                    .inspect_err(|e| log::error!("Failed to parse games: {}", e))
+                    .ok(),
+                Err(e) => {
+                    log::warn!("Failed to read games body: {}", e);
+                    None
                 }
             }
-            Err(err) => log::warn!("Failed to fetch games: {}", err),
-        }
+        } else {
+            None
+        };
+
+        let event = match parsed {
+            Some(parsed_games) => AppEvent::GamesUpdate { parsed_games },
+            None => AppEvent::GamesUnavailable {
+                date: self.current_date.clone(),
+                message: "No game data available for this date.".to_string(),
+            },
+        };
+        let _ = tx.send(event).await;
     }
 }
 
