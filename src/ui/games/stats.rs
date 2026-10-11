@@ -227,8 +227,9 @@ fn compute_middle_bar<'a>(away_value: &'a StatValue, home_value: &'a StatValue) 
             _ => 0.0,
         };
         let sum = away + home;
-        away_length = ((away / sum) * total).round().max(1.0) as u16;
-        home_length = STATS_MIDDLE_LENGTH - 3 - away_length;
+        // Clamped in case a negative value pushes the share outside 0..=total
+        away_length = ((away / sum) * total).round().clamp(1.0, total) as u16;
+        home_length = (STATS_MIDDLE_LENGTH - 3).saturating_sub(away_length);
     }
     let gap = std::iter::once(Span::raw(if away_zero ^ home_zero { "" } else { " " }));
     let away_spans: Vec<_> = std::iter::repeat(Span::styled("─", Style::new().fg(AWAY_BAR_COLOR)))
@@ -244,4 +245,20 @@ fn compute_middle_bar<'a>(away_value: &'a StatValue, home_value: &'a StatValue) 
         .collect();
 
     Line::from(spans).centered()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bar_width(line: &Line) -> usize {
+        line.spans.iter().map(|s| s.content.chars().count()).sum()
+    }
+
+    #[test]
+    fn middle_bar_stays_in_bounds_with_negative_values() {
+        // A negative value used to push the away share past the bar width
+        let line = compute_middle_bar(&StatValue::Float(5.0), &StatValue::Float(-3.0));
+        assert!(bar_width(&line) <= STATS_MIDDLE_LENGTH as usize);
+    }
 }

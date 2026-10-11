@@ -91,8 +91,13 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
     let selected_color = Style::new().underlined();
 
     // Compute the displayed tabs
-    let available_width = (tab_content_chunks[0].width - 2) as usize;
-    let selected = app.state.games.selected_game_index;
+    let available_width = tab_content_chunks[0].width.saturating_sub(2) as usize;
+    // Clamped so a stale index can't produce an out-of-range slice below
+    let selected = app
+        .state
+        .games
+        .selected_game_index
+        .min(num_matchups.saturating_sub(1));
 
     const ARROW_WIDTH: usize = 3;
     const MATCHUP_TAB_WIDTH: usize = 12;

@@ -217,6 +217,7 @@ impl AppState {
                     })
                     .collect();
                 self.games.games_data = Some(parsed_games);
+                self.games.clamp_selected_game();
                 self.sync_selected_game();
                 self.total_goals_tx
                     .try_send(TotalGoalsCommand::SetTargets(total_goals_targets))
@@ -778,7 +779,8 @@ pub fn table_page_up(visible_rows: usize, table_state: &mut TableState) {
     }
 }
 pub fn table_page_down(visible_rows: usize, len: usize, table_state: &mut TableState) {
-    if visible_rows != 0 {
+    // Nothing to page through in an empty table
+    if visible_rows != 0 && len != 0 {
         // The last visible row becomes the first visible row
         // But if last visible row is the last row in the table, simply select it without changing the offset
         let offset = table_state.offset();
@@ -836,6 +838,14 @@ mod tests {
         let mut ts = state_at(45, 47);
         table_page_down(10, 50, &mut ts);
         assert_eq!(ts.selected(), Some(49)); // len - 1
+    }
+
+    #[test]
+    fn page_down_on_empty_table_does_nothing() {
+        let mut ts = state_at(0, 0);
+        table_page_down(10, 0, &mut ts);
+        assert_eq!(ts.selected(), Some(0));
+        assert_eq!(ts.offset(), 0);
     }
 
     /// State with throwaway channels, except the scoreboard's

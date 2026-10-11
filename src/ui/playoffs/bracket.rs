@@ -1395,7 +1395,7 @@ fn render_scroll_indicators(frame: &mut Frame, area: Rect, playoff_bracket: &Pla
         frame.render_widget(
             Line::from("▶"),
             Rect {
-                x: area.x + area.width - 1,
+                x: area.x + area.width.saturating_sub(1),
                 y: mid_y,
                 width: 1,
                 height: 1,
@@ -1418,7 +1418,7 @@ fn render_scroll_indicators(frame: &mut Frame, area: Rect, playoff_bracket: &Pla
             Line::from("▼"),
             Rect {
                 x: mid_x,
-                y: area.y + area.height - 1,
+                y: area.y + area.height.saturating_sub(1),
                 width: 1,
                 height: 1,
             },

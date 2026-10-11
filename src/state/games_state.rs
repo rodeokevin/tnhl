@@ -133,6 +133,15 @@ impl GamesState {
             self.selected_game_index = prev_index(self.selected_game_index);
         }
     }
+    /// Keep the selected game within the list, e.g. after a refresh returns
+    /// fewer games than before.
+    pub fn clamp_selected_game(&mut self) {
+        let len = self.games_data.as_ref().map_or(0, |d| d.games.len());
+        if self.selected_game_index >= len {
+            self.selected_game_index = len.saturating_sub(1);
+            self.reset_game_state();
+        }
+    }
     pub fn reset_scoring_scroll(&mut self) {
         self.scroll_offset = 0;
         self.max_scroll = 0;
@@ -335,4 +344,29 @@ fn next_index(index: usize, max_index: usize) -> usize {
 }
 fn prev_index(index: usize) -> usize {
     index.saturating_sub(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::games::games::GamesResponse;
+
+    fn games_with_selected(selected: usize) -> GamesState {
+        let mut state = GamesState::default();
+        state.games_data = Some(GamesResponse {
+            prev_date: None,
+            current_date: None,
+            next_date: None,
+            games: Vec::new(),
+        });
+        state.selected_game_index = selected;
+        state
+    }
+
+    #[test]
+    fn clamp_selected_game_pulls_stale_index_into_range() {
+        let mut state = games_with_selected(5);
+        state.clamp_selected_game();
+        assert_eq!(state.selected_game_index, 0);
+    }
 }
