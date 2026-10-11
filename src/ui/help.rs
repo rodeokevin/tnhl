@@ -67,8 +67,6 @@ const PLAYOFFS_DOCS: &[&[&str; 2]; 12] = &[
     &["Go back to playoff bracket", "esc"],
     &["Select year", ":"],
 ];
-const PLAYERS_DOCS: &[&[&str; 2]; 2] = &[&["Players", " "], &["To be implemented", ""]];
-const STATSTICS_DOCS: &[&[&str; 2]; 2] = &[&["Statistics", " "], &["To be implemented", ""]];
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum RowType {
@@ -163,8 +161,6 @@ fn build_docs() -> Vec<&'static [&'static str; 2]> {
     docs.extend_from_slice(STANDINGS_DOCS);
     docs.extend_from_slice(TEAM_STATS_DOCS);
     docs.extend_from_slice(PLAYOFFS_DOCS);
-    docs.extend_from_slice(PLAYERS_DOCS);
-    docs.extend_from_slice(STATSTICS_DOCS);
 
     docs
 }

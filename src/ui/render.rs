@@ -124,6 +124,18 @@ fn render_menu(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Build the list of context-sensitive key hints to show at the bottom
 fn context_hints(app: &App) -> Vec<(&'static str, &'static str)> {
+    // ":" opens a date picker on Games/Standings and a year picker elsewhere
+    let picker = match app.state.selected_menu {
+        MenuFocus::Games | MenuFocus::Standings => ("Date", ":"),
+        MenuFocus::TeamStats | MenuFocus::Playoffs => ("Season", ":"),
+    };
+    let mut hints = vec![picker];
+    hints.extend(tab_hints(app));
+    hints
+}
+
+/// Hints for keys specific to the current tab and view
+fn tab_hints(app: &App) -> Vec<(&'static str, &'static str)> {
     match app.state.selected_menu {
         MenuFocus::Games => {
             let mut hints = Vec::new();
@@ -132,23 +144,35 @@ fn context_hints(app: &App) -> Vec<(&'static str, &'static str)> {
                 return hints;
             }
             let is_pregame = app.state.games.is_pregame();
+            // Keys for the main pane are ignored while the plays pane has focus
+            let main_focused = !app.state.games.plays_focused;
             // Play-by-play toggle is available on all game views except pre-game.
             if !is_pregame {
                 hints.push(("Play-by-play", "p"));
             }
+            // Scoring/boxscore/stats cycling
+            if !is_pregame && main_focused {
+                hints.push(("Cycle info", "< >"));
+            }
             if app.state.games.plays_visible && !is_pregame {
                 hints.push(("Toggle focus", "tab"));
             }
-            if app.state.games.focus == GamesFocus::Boxscore {
+            if app.state.games.focus == GamesFocus::Boxscore && main_focused {
                 hints.extend([
                     ("Forwards", "f"),
-                    ("Defense", "d"),
+                    ("Defensemen", "d"),
                     ("Goalies", "g"),
                     ("Switch team", "t"),
                 ]);
             }
             hints
         }
+        MenuFocus::TeamStats => vec![
+            ("Skaters", "s"),
+            ("Goalies", "g"),
+            ("Pick team", "t"),
+            ("Season type", "< >"),
+        ],
         _ => vec![],
     }
 }
