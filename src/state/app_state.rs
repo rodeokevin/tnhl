@@ -25,7 +25,6 @@ use crate::state::{
     games_state::GamesState, help::HelpState, playoffs_state::PlayoffsState,
     standings_state::StandingsState, team_stats::team_stats_state::TeamStatsState,
 };
-use chrono::ParseError;
 use chrono_tz::Tz;
 use ratatui::widgets::TableState;
 use tokio::sync::mpsc::Sender;
@@ -187,11 +186,15 @@ impl AppState {
                     .try_send(StandingsCommand::SetSeasonBounds(seasons.clone()))
                     .ok();
                 self.team_stats_tx
-                    .try_send(TeamStatsCommand::SetSeasonBounds(seasons))
+                    .try_send(TeamStatsCommand::SetSeasonBounds(seasons.clone()))
+                    .ok();
+                self.bracket_tx
+                    .try_send(BracketCommand::SetSeasonBounds(seasons))
                     .ok();
             }
             AppEvent::StandingsUpdate { ref date, .. }
             | AppEvent::StandingsOutOfRange { ref date, .. }
+            | AppEvent::StandingsUnavailable { ref date, .. }
                 if !self.is_selected_date(Some(date)) =>
             {
                 log::debug!("Ignoring standings for {}", date);
@@ -199,12 +202,60 @@ impl AppState {
             AppEvent::TeamStatsRegularSeasonUpdate { team, year, .. }
             | AppEvent::TeamStatsPlayoffsUpdate { team, year, .. }
             | AppEvent::TeamStatsOutOfRange { team, year, .. }
+            | AppEvent::TeamStatsUnavailable { team, year, .. }
                 if !self.is_selected_team_stats(team, year) =>
             {
                 log::debug!("Ignoring team stats for {} {}", team, year);
             }
-            AppEvent::BracketUpdate { year, .. } if year != self.date_state.year => {
+            AppEvent::BracketUpdate { year, .. } | AppEvent::BracketUnavailable { year, .. }
+                if year != self.date_state.year =>
+            {
                 log::debug!("Ignoring bracket for {}", year);
+            }
+            // A failed refresh keeps standings already shown; otherwise show
+            // a message instead of loading forever
+            AppEvent::StandingsUnavailable { message, .. } => {
+                if self.standings.standings_data.is_none() {
+                    self.standings.out_of_range = Some(message);
+                }
+            }
+            AppEvent::TeamStatsUnavailable {
+                playoffs, message, ..
+            } => {
+                let loaded = if playoffs {
+                    &self.team_stats.playoffs_team_stats_data
+                } else {
+                    &self.team_stats.regular_season_team_stats_data
+                };
+                if loaded.is_none() {
+                    self.team_stats.out_of_range = Some(message);
+                }
+            }
+            AppEvent::BracketUnavailable { message, .. } => {
+                // Keep a bracket that has series; an empty one (e.g. loaded
+                // before the season list arrived) is replaced by the message
+                let showing_series = self
+                    .playoffs
+                    .bracket_data
+                    .as_ref()
+                    .is_some_and(|b| !b.series.is_empty());
+                if !showing_series {
+                    self.playoffs.bracket_data = None;
+                    self.playoffs.bracket_unavailable = Some(message);
+                }
+            }
+            AppEvent::SeriesUnavailable {
+                year,
+                letter,
+                message,
+            } => {
+                let selected = self.playoffs.selected_series.map(|c| c.to_string());
+                if year == self.date_state.year
+                    && selected.as_deref() == Some(letter.as_str())
+                    && self.playoffs.series_data.is_none()
+                {
+                    self.playoffs.series_unavailable = Some(message);
+                }
             }
             AppEvent::StandingsUpdate {
                 standings, season, ..
@@ -341,6 +392,7 @@ impl AppState {
                         Vec::new()
                     };
                 self.playoffs.bracket_data = Some(parsed_bracket);
+                self.playoffs.bracket_unavailable = None;
                 self.bracket_series_tx
                     .try_send(BracketSeriesCommand::SetTargets(bracket_targets))
                     .ok();
@@ -357,6 +409,7 @@ impl AppState {
                 {
                     log::debug!("Updating series data");
                     self.playoffs.series_data = Some(parsed_series);
+                    self.playoffs.series_unavailable = None;
                 } else {
                     log::debug!(
                         "Ignoring series {} for {}",
@@ -550,6 +603,7 @@ impl AppState {
             Action::ExitSeries => {
                 self.playoffs.exit_series();
                 self.playoffs.series_data = None;
+                self.playoffs.series_unavailable = None;
                 self.playoffs.focus = PlayoffsFocus::Bracket;
                 self.series_tx.try_send(SeriesCommand::SetSeries(None)).ok();
             }
@@ -640,7 +694,7 @@ impl AppState {
             _ => self.selected_menu,
         }
     }
-    fn try_update_date_from_input(&mut self) -> Result<(), ParseError> {
+    fn try_update_date_from_input(&mut self) -> Result<(), ()> {
         let valid_date = self.date_state.validate_input_date()?;
         self.date_state.set_date_from_valid_input(valid_date);
         Ok(())
@@ -693,6 +747,7 @@ impl AppState {
             // Clear old data and reset state
             self.playoffs.bracket_data = None;
             self.playoffs.series_data = None;
+            self.playoffs.bracket_unavailable = None;
             // Keyed by series letter, which repeats every year
             self.playoffs.bracket_series_data.clear();
             self.playoffs.reset_state();
@@ -1278,5 +1333,113 @@ mod tests {
             bracket: bracket(),
         });
         assert!(state.playoffs.bracket_data.is_some());
+    }
+
+    #[test]
+    fn standings_unavailable_shows_message_or_keeps_data() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        let today = state.date_state.date.to_string();
+        let unavailable = |date: &str| AppEvent::StandingsUnavailable {
+            date: date.to_string(),
+            message: "No standings available for this date.".to_string(),
+        };
+
+        state.handle_event(unavailable(&today));
+        assert_eq!(
+            state.standings.out_of_range.as_deref(),
+            Some("No standings available for this date.")
+        );
+
+        // Loaded standings survive a failed refresh
+        state.handle_event(AppEvent::StandingsUpdate {
+            date: today.clone(),
+            standings: crate::models::standings::StandingsResponse::from_json(
+                r#"{"standings":[]}"#,
+            )
+            .unwrap(),
+            season: None,
+        });
+        state.handle_event(unavailable(&today));
+        assert!(state.standings.standings_data.is_some());
+        assert!(state.standings.out_of_range.is_none());
+    }
+
+    #[test]
+    fn team_stats_unavailable_only_affects_the_missing_view() {
+        use crate::models::TeamAbbrev;
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 2027;
+        state.team_stats.team_picker.current_team = TeamAbbrev::MTL;
+        state.handle_event(AppEvent::TeamStatsRegularSeasonUpdate {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            stats: crate::models::team_stats::TeamStatsResponse::from_json(
+                r#"{"skaters":[],"goalies":[]}"#,
+            )
+            .unwrap(),
+        });
+        // Regular season is loaded, so its failure is ignored
+        state.handle_event(AppEvent::TeamStatsUnavailable {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            playoffs: false,
+            message: "x".to_string(),
+        });
+        assert!(state.team_stats.out_of_range.is_none());
+        // Playoffs aren't, so its failure shows the message
+        state.handle_event(AppEvent::TeamStatsUnavailable {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            playoffs: true,
+            message: "No team stats available for this season.".to_string(),
+        });
+        assert!(state.team_stats.out_of_range.is_some());
+        assert!(state.team_stats.regular_season_team_stats_data.is_some());
+    }
+
+    #[test]
+    fn bracket_and_series_unavailable_show_messages() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 2026;
+        state.handle_event(AppEvent::BracketUnavailable {
+            year: 2025,
+            message: "stale".to_string(),
+        });
+        assert!(state.playoffs.bracket_unavailable.is_none());
+        state.handle_event(AppEvent::BracketUnavailable {
+            year: 2026,
+            message: "No playoff bracket available for this season.".to_string(),
+        });
+        assert!(state.playoffs.bracket_unavailable.is_some());
+
+        state.playoffs.selected_series = Some('A');
+        state.handle_event(AppEvent::SeriesUnavailable {
+            year: 2026,
+            letter: "B".to_string(),
+            message: "x".to_string(),
+        });
+        assert!(state.playoffs.series_unavailable.is_none());
+        state.handle_event(AppEvent::SeriesUnavailable {
+            year: 2026,
+            letter: "A".to_string(),
+            message: "No series data available.".to_string(),
+        });
+        assert!(state.playoffs.series_unavailable.is_some());
+    }
+
+    #[test]
+    fn out_of_range_message_replaces_an_empty_bracket() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 1915;
+        state.handle_event(AppEvent::BracketUpdate {
+            year: 1915,
+            bracket: crate::models::playoffs::bracket::BracketResponse::from_json("{}").unwrap(),
+        });
+        state.handle_event(AppEvent::BracketUnavailable {
+            year: 1915,
+            message: "No stats for this season. Earliest available: 1917-1918.".to_string(),
+        });
+        assert!(state.playoffs.bracket_data.is_none());
+        assert!(state.playoffs.bracket_unavailable.is_some());
     }
 }

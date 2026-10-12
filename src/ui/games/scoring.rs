@@ -5,8 +5,7 @@ use crate::models::games::{
 use crate::ui::{
     games::games::get_period_title,
     games::games::{BIG_SCORE_COLOR, render_scroll_frame},
-    games::stats::AWAY_BAR_COLOR,
-    render::border_style,
+    render::{ACCENT_RED, border_style},
 };
 use ratatui::{
     Frame,
@@ -99,7 +98,7 @@ pub fn render_scoring(
                             let label = strengths.join(", ");
                             away_spans.push(Span::styled(
                                 format!("{} ", label),
-                                Style::new().fg(AWAY_BAR_COLOR).bold(),
+                                Style::new().fg(ACCENT_RED).bold(),
                             ));
                         }
 
@@ -128,7 +127,7 @@ pub fn render_scoring(
                             let label = strengths.join(", ");
                             home_spans.push(Span::styled(
                                 format!(" {}", label),
-                                Style::new().fg(AWAY_BAR_COLOR).bold(),
+                                Style::new().fg(ACCENT_RED).bold(),
                             ));
                         }
                         away_lines.push(Line::default());
@@ -158,7 +157,7 @@ pub fn render_scoring(
                         if matches!(shootout_attempt.result, ShootoutAttemptResult::Goal) {
                             ("[✓]", BIG_SCORE_COLOR)
                         } else {
-                            ("[✗]", AWAY_BAR_COLOR)
+                            ("[✗]", ACCENT_RED)
                         };
 
                     let attempt_span = Span::styled(attempt_symbol, Style::new().fg(attempt_color));

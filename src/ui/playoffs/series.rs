@@ -8,10 +8,9 @@ use crate::models::{
     playoffs::series::SeriesResponse,
 };
 use crate::ui::{
-    games::games::{get_period_title, split_info_left_middle_right},
-    games::stats::{AWAY_BAR_COLOR, HOME_BAR_COLOR},
+    games::games::{BIG_SCORE_COLOR, get_period_title, split_info_left_middle_right},
     layout::split_area_vertical,
-    render::border_style,
+    render::{ACCENT_BLUE, ACCENT_RED, border_style},
 };
 
 use ratatui::{
@@ -93,6 +92,13 @@ pub fn render_series(frame: &mut Frame, app: &mut App, area: Rect) {
             &mut app.state.playoffs.vertical_max_scroll,
             &mut app.state.playoffs.visible_rows,
         );
+    } else if let Some(message) = &app.state.playoffs.series_unavailable {
+        frame.render_widget(
+            Line::from(message.as_str())
+                .centered()
+                .style(Style::new().fg(Color::DarkGray)),
+            inner,
+        );
     } else {
         frame.render_widget(Line::from("Loading series...").centered(), inner);
     }
@@ -161,7 +167,7 @@ pub fn aggregate_series_goals(series: &SeriesResponse) -> (u32, u32) {
 fn build_big_text(text: String, alignment: Alignment) -> BigText<'static> {
     BigText::builder()
         .pixel_size(PixelSize::Quadrant)
-        .style(Style::new().fg(HOME_BAR_COLOR))
+        .style(Style::new().fg(ACCENT_BLUE))
         .lines(vec![Line::from(text)])
         .alignment(alignment)
         .build()
@@ -232,7 +238,7 @@ fn render_schedule(
 
             GameState::LIVE | GameState::CRIT => match game.period_descriptor.as_ref() {
                 None => Line::from("Live"),
-                Some(d) => Line::styled(get_period_title(d), Style::new().fg(Color::Green)),
+                Some(d) => Line::styled(get_period_title(d), Style::new().fg(BIG_SCORE_COLOR)),
             },
 
             GameState::OVER | GameState::FINAL | GameState::OFF => {
@@ -271,11 +277,7 @@ fn render_schedule(
 
         let away_is_top = (series.top_seed_team.id != -1)
             && (game.away_team.id == series.top_seed_team.id as u32);
-        let away_base_color = if away_is_top {
-            AWAY_BAR_COLOR
-        } else {
-            HOME_BAR_COLOR
-        };
+        let away_base_color = if away_is_top { ACCENT_RED } else { ACCENT_BLUE };
 
         let is_played = matches!(
             game.game_state,
@@ -302,11 +304,7 @@ fn render_schedule(
         let home_is_top = (series.top_seed_team.id != -1)
             && (game.home_team.id == series.top_seed_team.id as u32);
 
-        let home_base_color = if home_is_top {
-            AWAY_BAR_COLOR
-        } else {
-            HOME_BAR_COLOR
-        };
+        let home_base_color = if home_is_top { ACCENT_RED } else { ACCENT_BLUE };
 
         let home_style = if is_played {
             match (winner, is_final) {

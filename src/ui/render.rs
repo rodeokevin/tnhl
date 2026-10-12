@@ -19,6 +19,10 @@ use crate::ui::{
 use crate::{app::App, ui::team_stats::team_stats};
 
 pub const BORDER_COLOR: Color = Color::Rgb(247, 194, 0); // Orange-yellowish
+/// Fixed red and blue, so they look the same in every terminal theme. Used for
+/// away/home stat bars, penalties, invalid input, rink markings, etc.
+pub const ACCENT_RED: Color = Color::Rgb(220, 50, 47);
+pub const ACCENT_BLUE: Color = Color::Rgb(38, 139, 210);
 
 const MENU_WIDTH: u16 = 19;
 
@@ -173,6 +177,10 @@ fn tab_hints(app: &App) -> Vec<(&'static str, &'static str)> {
             ("Pick team", "t"),
             ("Season type", "< >"),
         ],
+        // Esc only does something in the series view
+        MenuFocus::Playoffs if app.state.playoffs.focus == PlayoffsFocus::Series => {
+            vec![("Back", "esc")]
+        }
         _ => vec![],
     }
 }

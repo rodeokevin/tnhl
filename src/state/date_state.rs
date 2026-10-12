@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, ParseError, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 
 use crate::models::standings::season_end_year_fallback;
 use chrono_tz::Tz;
@@ -25,13 +25,17 @@ pub struct DateState {
 
 impl DateState {
     /// Validate the input date
-    pub fn validate_input_date(&mut self) -> Result<NaiveDate, ParseError> {
+    /// Years before 1 (0 and negative) are rejected
+    pub fn validate_input_date(&mut self) -> Result<NaiveDate, ()> {
         let input: String = std::mem::take(&mut self.text);
         let date = match input.as_str() {
             // The NHL game day, which stays on the previous date until late
             // games finish, rather than the wall-clock date
             "t" | "today" => Ok(self.today),
-            _ => NaiveDate::parse_from_str(input.as_str(), "%Y-%m-%d"),
+            _ => NaiveDate::parse_from_str(input.as_str(), "%Y-%m-%d")
+                .ok()
+                .filter(|date| date.year() >= 1)
+                .ok_or(()),
         };
         self.is_valid = date.is_ok();
         date
@@ -42,6 +46,7 @@ impl DateState {
         self.date_selection_offset = 0;
     }
     /// Validate the input year
+    /// Years before 1 (0 and negative) are rejected; 0 also means "unset"
     pub fn validate_input_year(&mut self, tz: Tz) -> Result<i32, ()> {
         let input: String = std::mem::take(&mut self.text);
 
@@ -50,7 +55,11 @@ impl DateState {
             "t" | "today" => Ok(self.current_season_year.unwrap_or_else(|| {
                 season_end_year_fallback(Utc::now().with_timezone(&tz).date_naive())
             })),
-            _ => input.parse::<i32>().map_err(|_| ()),
+            _ => input
+                .parse::<i32>()
+                .ok()
+                .filter(|&year| year >= 1)
+                .ok_or(()),
         };
 
         self.is_valid = year.is_ok();
@@ -123,6 +132,34 @@ impl Default for DateState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_picker_rejects_year_zero_and_negative_years() {
+        let mut state = DateState::default();
+        for input in ["-0001-01-01", "0000-01-01", "-2026-10-10"] {
+            state.text = input.to_string();
+            assert_eq!(state.validate_input_date(), Err(()), "{input}");
+            assert!(!state.is_valid);
+        }
+        state.text = "0001-01-01".to_string();
+        assert!(state.validate_input_date().is_ok());
+    }
+
+    #[test]
+    fn year_picker_rejects_year_zero_and_negative_years() {
+        let mut state = DateState::default();
+        for input in ["-5", "0", "-2026"] {
+            state.text = input.to_string();
+            assert_eq!(
+                state.validate_input_year(chrono_tz::UTC),
+                Err(()),
+                "{input}"
+            );
+            assert!(!state.is_valid);
+        }
+        state.text = "1".to_string();
+        assert_eq!(state.validate_input_year(chrono_tz::UTC), Ok(1));
+    }
 
     #[test]
     fn today_shortcut_uses_the_nhl_game_day() {

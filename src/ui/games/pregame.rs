@@ -10,8 +10,8 @@ use crate::models::games::game_story::{
     GameStoryResponse, GoalieCompare, PreGameMatchup, StoryTeam,
 };
 use crate::ui::games::games::{ordinal, render_scroll_frame, split_info_left_middle_right};
-use crate::ui::games::stats::{AWAY_BAR_COLOR, HOME_BAR_COLOR};
 use crate::ui::render::border_style;
+use crate::ui::render::{ACCENT_BLUE, ACCENT_RED};
 
 const MIDDLE_LENGTH: u16 = 22;
 
@@ -327,11 +327,11 @@ fn compute_bar(mut away: f64, mut home: f64) -> Line<'static> {
 
     let gap = std::iter::once(Span::raw(if away_zero ^ home_zero { "" } else { " " }));
     let away_spans = std::iter::repeat_n(
-        Span::styled("─", Style::new().fg(AWAY_BAR_COLOR)),
+        Span::styled("─", Style::new().fg(ACCENT_RED)),
         away_length as usize,
     );
     let home_spans = std::iter::repeat_n(
-        Span::styled("─", Style::new().fg(HOME_BAR_COLOR)),
+        Span::styled("─", Style::new().fg(ACCENT_BLUE)),
         home_length as usize,
     );
     let spans: Vec<_> = away_spans.chain(gap).chain(home_spans).collect();

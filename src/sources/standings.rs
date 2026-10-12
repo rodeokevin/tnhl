@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use super::{AppEvent, Source, TabGate, send_request};
+use super::{AppEvent, Source, TabGate, read_json, send_request};
 use crate::models::standings::{
     DateResolution, SeasonBounds, resolve_date, season_ending_before, season_starting_after,
 };
@@ -129,28 +129,28 @@ impl StandingsSource {
         let season = self.matched_season(&date);
         let url = format!("https://api-web.nhle.com/v1/standings/{}", date);
 
-        match send_request(self.client.get(&url)).await {
-            Ok(resp) => {
-                if let Ok(body) = resp.text().await {
-                    // Parse the JSON
-                    match StandingsResponse::from_json(&body) {
-                        Ok(parsed_standings) => {
-                            log::debug!("Standings data successfully parsed (date {})", date);
-                            let _ = tx
-                                .send(AppEvent::StandingsUpdate {
-                                    date: self.current_date.clone(),
-                                    standings: parsed_standings,
-                                    season,
-                                })
-                                .await;
-                            log::debug!("Sent standings data to app");
-                        }
-                        Err(e) => log::error!("Failed to parse standings: {}", e),
-                    }
+        let resp = match send_request(self.client.get(&url)).await {
+            Ok(resp) => resp,
+            Err(err) => {
+                log::warn!("Failed to fetch standings: {}", err);
+                return;
+            }
+        };
+        let event = match read_json(resp, "standings", StandingsResponse::from_json).await {
+            Some(parsed_standings) => {
+                log::debug!("Standings data successfully parsed (date {})", date);
+                AppEvent::StandingsUpdate {
+                    date: self.current_date.clone(),
+                    standings: parsed_standings,
+                    season,
                 }
             }
-            Err(err) => log::warn!("Failed to fetch standings: {}", err),
-        }
+            None => AppEvent::StandingsUnavailable {
+                date: self.current_date.clone(),
+                message: "No standings available for this date.".to_string(),
+            },
+        };
+        let _ = tx.send(event).await;
     }
 
     /// The season bounds whose range contains `date` (the effective fetch date).

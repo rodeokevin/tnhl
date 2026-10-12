@@ -9,6 +9,7 @@ use ratatui::{
 
 use crate::models::playoffs::bracket::Series;
 use crate::models::playoffs::series::SeriesResponse;
+use crate::ui::games::games::BIG_SCORE_COLOR;
 use crate::ui::playoffs::series::aggregate_series_goals;
 use crate::ui::render::{BORDER_COLOR, border_style};
 use crate::{app::App, state::playoffs_state::PlayoffsState};
@@ -35,7 +36,7 @@ fn card_width_for_year(year: i32) -> u16 {
     }
 }
 
-const COLOR_WIN: Color = Color::Green;
+const COLOR_WIN: Color = BIG_SCORE_COLOR;
 const COLOR_LOSE: Color = Color::DarkGray;
 
 pub fn render_playoffs(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -91,6 +92,13 @@ pub fn render_playoffs(frame: &mut Frame, app: &mut App, area: Rect) {
         // Response returned {}
         frame.render_widget(
             Line::from("No data available.")
+                .centered()
+                .style(Style::new().fg(Color::DarkGray)),
+            inner,
+        );
+    } else if let Some(message) = &app.state.playoffs.bracket_unavailable {
+        frame.render_widget(
+            Line::from(message.as_str())
                 .centered()
                 .style(Style::new().fg(Color::DarkGray)),
             inner,

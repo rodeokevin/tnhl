@@ -5,7 +5,7 @@ use crate::models::games::games::{
 };
 use crate::models::playoffs::series::SeriesResponse;
 use crate::state::games_state::GamesFocus;
-use crate::ui::games::stats::AWAY_BAR_COLOR;
+use crate::ui::render::ACCENT_RED;
 use crate::ui::{
     games::{
         boxscore,
@@ -379,9 +379,11 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
 
 pub fn get_color_from_game_state(state: &GameState) -> Style {
     match state {
-        GameState::LIVE | GameState::CRIT | GameState::OVER => Style::new().fg(Color::Green),
+        GameState::LIVE | GameState::CRIT | GameState::OVER => Style::new().fg(BIG_SCORE_COLOR),
         GameState::FINAL | GameState::OFF => Style::new().fg(Color::DarkGray),
-        _ => Style::new().fg(Color::White), // FUT, PRE, Unknown
+        // FUT, PRE, Unknown: the terminal's default text color, which stays
+        // readable on light and dark themes
+        _ => Style::new().fg(Color::Reset),
     }
 }
 
@@ -425,7 +427,7 @@ pub fn render_time_remaining(
                         s.away_team.strength.max(s.home_team.strength),
                         s.away_team.strength.min(s.home_team.strength)
                     ),
-                    Style::new().fg(AWAY_BAR_COLOR).bold(),
+                    Style::new().fg(ACCENT_RED).bold(),
                 )]
             })
             .unwrap_or_default();
@@ -493,7 +495,7 @@ pub fn render_sweeping_status(
                             let pos = offset % width;
                             let dist = i.abs_diff(pos).min(width - i.abs_diff(pos));
                             if dist == 0 || dist == 1 {
-                                Span::styled("━", Style::new().fg(Color::Green))
+                                Span::styled("━", Style::new().fg(BIG_SCORE_COLOR))
                             } else {
                                 Span::styled("─", Style::new().fg(Color::DarkGray))
                             }
@@ -502,7 +504,7 @@ pub fn render_sweeping_status(
                     frame.render_widget(Line::from(spans).centered(), chunks[1]);
                 } else {
                     let spans: Vec<_> =
-                        std::iter::repeat_n(Span::styled("─", Style::new().fg(Color::Red)), width)
+                        std::iter::repeat_n(Span::styled("─", Style::new().fg(ACCENT_RED)), width)
                             .collect();
 
                     frame.render_widget(Line::from(spans).centered(), chunks[1]);
@@ -550,7 +552,7 @@ pub fn render_team_status(
 
         if !parts.is_empty() {
             let label = format!("[{}] ", parts.join(", "));
-            left_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
+            left_spans.push(Span::styled(label, Style::new().fg(ACCENT_RED).bold()));
         }
     }
     left_spans.push(Span::styled(
@@ -581,7 +583,7 @@ pub fn render_team_status(
             .collect();
         if !parts.is_empty() {
             let label = format!(" [{}]", parts.join(", "));
-            right_spans.push(Span::styled(label, Style::new().fg(AWAY_BAR_COLOR).bold()));
+            right_spans.push(Span::styled(label, Style::new().fg(ACCENT_RED).bold()));
         }
     }
     frame.render_widget(Line::from(right_spans).left_aligned(), chunks[2]);

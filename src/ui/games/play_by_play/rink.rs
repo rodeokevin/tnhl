@@ -1,5 +1,6 @@
 // Render a diagram of the rink and optionally a marker for a play-by-play event
 
+use crate::ui::render::{ACCENT_BLUE, ACCENT_RED, BORDER_COLOR};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -39,8 +40,9 @@ const ARC_STEPS_PER_UNIT_RADIUS: f64 = 2.5;
 const MIN_CIRCLE_STEPS: f64 = 24.0;
 const MAX_CIRCLE_STEPS: f64 = 180.0;
 
-const BOARDS_COLOR: Color = Color::White;
-const EVENT_COLOR: Color = Color::Yellow;
+// The terminal's default text color, so the boards show on light and dark themes
+const BOARDS_COLOR: Color = Color::Reset;
+const EVENT_COLOR: Color = BORDER_COLOR;
 // The event marker is a filled square; this is half its side length (ft).
 const EVENT_HALF_SIZE: f64 = 1.0;
 
@@ -105,26 +107,26 @@ fn draw_rink(ctx: &mut ratatui::widgets::canvas::Context) {
     draw_boards(ctx);
 
     // Center red line
-    draw_vertical_ice_line(ctx, 0.0, Color::Red);
+    draw_vertical_ice_line(ctx, 0.0, ACCENT_RED);
 
     // Blue lines
     for x in [-BLUE_LINE_X, BLUE_LINE_X] {
-        draw_vertical_ice_line(ctx, x, Color::Blue);
+        draw_vertical_ice_line(ctx, x, ACCENT_BLUE);
     }
 
     // Goal lines
     for x in [-GOAL_LINE_X, GOAL_LINE_X] {
-        draw_vertical_ice_line(ctx, x, Color::Red);
+        draw_vertical_ice_line(ctx, x, ACCENT_RED);
     }
 
     // Center faceoff circle
-    draw_circle(ctx, 0.0, 0.0, FACEOFF_RADIUS, Color::Blue);
+    draw_circle(ctx, 0.0, 0.0, FACEOFF_RADIUS, ACCENT_BLUE);
 
     // Four end-zone faceoff circles
     for &fx in &[-FACEOFF_X, FACEOFF_X] {
         for &fy in &[-FACEOFF_Y, FACEOFF_Y] {
-            draw_circle(ctx, fx, fy, FACEOFF_RADIUS, Color::Red);
-            draw_circle(ctx, fx, fy, FACEOFF_DOT_RADIUS, Color::Red);
+            draw_circle(ctx, fx, fy, FACEOFF_RADIUS, ACCENT_RED);
+            draw_circle(ctx, fx, fy, FACEOFF_DOT_RADIUS, ACCENT_RED);
         }
     }
 
@@ -149,21 +151,21 @@ fn draw_nets(ctx: &mut ratatui::widgets::canvas::Context) {
             -NET_HALF_WIDTH,
             back_x,
             -NET_HALF_WIDTH,
-            Color::Red,
+            ACCENT_RED,
         )); // post
         ctx.draw(&Line::new(
             goal_x,
             NET_HALF_WIDTH,
             back_x,
             NET_HALF_WIDTH,
-            Color::Red,
+            ACCENT_RED,
         )); // post
         ctx.draw(&Line::new(
             back_x,
             -NET_HALF_WIDTH,
             back_x,
             NET_HALF_WIDTH,
-            Color::Red,
+            ACCENT_RED,
         )); // back
     }
 }

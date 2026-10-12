@@ -13,7 +13,8 @@ use crate::models::games::games::PeriodType;
 use crate::models::games::play_by_play::{
     DescKey, PlayData, PlayDetails, PlaysResponse, RosterPlayer, TypeDescKey,
 };
-use crate::ui::render::border_style;
+use crate::ui::games::games::BIG_SCORE_COLOR;
+use crate::ui::render::{ACCENT_RED, border_style};
 
 const PLAYS_COLUMNS: [Constraint; 4] = [
     Constraint::Length(3),
@@ -443,9 +444,9 @@ fn penalty_reason(key: &DescKey) -> &'static str {
 
 fn type_style(kind: &TypeDescKey) -> Style {
     match kind {
-        TypeDescKey::Goal => Style::new().fg(Color::Green).bold(),
+        TypeDescKey::Goal => Style::new().fg(BIG_SCORE_COLOR).bold(),
         TypeDescKey::Penalty | TypeDescKey::Misconduct | TypeDescKey::DelayedPenalty => {
-            Style::new().fg(Color::Red)
+            Style::new().fg(ACCENT_RED)
         }
         TypeDescKey::Stoppage
         | TypeDescKey::PeriodStart

@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::sources::{SeriesResponse, TabGate, send_request};
+use crate::sources::{SeriesResponse, TabGate, read_json, send_request};
 use crate::{AppEvent, Source};
 
 const FETCH_INTERVAL: Duration = Duration::from_secs(60);
@@ -47,27 +47,25 @@ impl SeriesSource {
                 self.current_year,
                 letter,
             );
-            match send_request(self.client.get(&url)).await {
-                Ok(resp) => {
-                    if let Ok(body) = resp.text().await {
-                        // Parse the JSON
-                        match SeriesResponse::from_json(&body) {
-                            Ok(parsed_series) => {
-                                log::debug!("Series data successfully parsed");
-                                let _ = tx
-                                    .send(AppEvent::SeriesUpdate {
-                                        year: self.current_year,
-                                        parsed_series,
-                                    })
-                                    .await;
-                                log::debug!("Sent series data to app");
-                            }
-                            Err(e) => log::error!("Failed to parse series: {}", e),
-                        }
-                    }
+            let resp = match send_request(self.client.get(&url)).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    log::warn!("Failed to fetch series: {}", err);
+                    return;
                 }
-                Err(err) => log::warn!("Failed to fetch series: {}", err),
-            }
+            };
+            let event = match read_json(resp, "series", SeriesResponse::from_json).await {
+                Some(parsed_series) => AppEvent::SeriesUpdate {
+                    year: self.current_year,
+                    parsed_series,
+                },
+                None => AppEvent::SeriesUnavailable {
+                    year: self.current_year,
+                    letter: letter.to_string(),
+                    message: "No series data available.".to_string(),
+                },
+            };
+            let _ = tx.send(event).await;
         } else {
             log::debug!("Not fetching series data because no series is selected");
         }

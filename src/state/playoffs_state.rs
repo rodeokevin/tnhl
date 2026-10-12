@@ -12,12 +12,16 @@ const BRACKET_PAGE_STEP: usize = 10;
 pub struct PlayoffsState {
     pub focus: PlayoffsFocus,
     pub bracket_data: Option<BracketResponse>,
+    /// Shown instead of "Loading" when the bracket couldn't be loaded
+    pub bracket_unavailable: Option<String>,
     /// Visible rows and columns updated at render
     pub visible_rows: usize,
     pub visible_columns: usize,
     // The letter representing the series. If None, the ui displays the bracket
     pub selected_series: Option<char>,
     pub series_data: Option<SeriesResponse>,
+    /// Shown instead of "Loading" when the open series couldn't be loaded
+    pub series_unavailable: Option<String>,
     pub bracket_series_data: HashMap<String, SeriesResponse>,
     pub horizontal_scroll_offset: usize,
     /// Max horizontal scroll updated at render
@@ -40,11 +44,13 @@ impl PlayoffsState {
         self.reset_scoring_scroll();
         self.selected_series = None;
         self.series_data = None;
+        self.series_unavailable = None;
         self.saved_bracket_scroll = None;
         self.focus = PlayoffsFocus::default();
     }
 
     pub fn enter_series(&mut self) {
+        self.series_unavailable = None;
         self.saved_bracket_scroll =
             Some((self.horizontal_scroll_offset, self.vertical_scroll_offset));
         self.reset_scoring_scroll();

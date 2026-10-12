@@ -2,7 +2,7 @@ use crate::App;
 use crate::models::games::game_story::{GameStatsCategory, StatValue, TeamGameStats};
 use crate::ui::{
     games::games::{render_scroll_frame, split_info_left_middle_right},
-    render::border_style,
+    render::{ACCENT_BLUE, ACCENT_RED, border_style},
 };
 use std::collections::HashMap;
 use std::vec;
@@ -14,9 +14,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
-
-pub const AWAY_BAR_COLOR: Color = Color::Rgb(220, 50, 47); // Red
-pub const HOME_BAR_COLOR: Color = Color::Rgb(38, 139, 210); // Blue
 
 // Length of the middle chunk for scoring
 pub const STATS_MIDDLE_LENGTH: u16 = 25;
@@ -233,12 +230,12 @@ fn compute_middle_bar<'a>(away_value: &'a StatValue, home_value: &'a StatValue) 
     }
     let gap = std::iter::once(Span::raw(if away_zero ^ home_zero { "" } else { " " }));
     let away_spans: Vec<_> = std::iter::repeat_n(
-        Span::styled("─", Style::new().fg(AWAY_BAR_COLOR)),
+        Span::styled("─", Style::new().fg(ACCENT_RED)),
         away_length as usize,
     )
     .collect();
     let home_spans: Vec<_> = std::iter::repeat_n(
-        Span::styled("─", Style::new().fg(HOME_BAR_COLOR)),
+        Span::styled("─", Style::new().fg(ACCENT_BLUE)),
         home_length as usize,
     )
     .collect();

@@ -54,6 +54,29 @@ pub async fn send_request(request: reqwest::RequestBuilder) -> reqwest::Result<r
     request.send().await.inspect(log_status)
 }
 
+/// Read and parse a response body. An error status, an unreadable body or
+/// JSON that doesn't parse all count as "no data" (`None`), logged with
+/// `what`, so callers can show a message instead of loading forever.
+pub async fn read_json<T>(
+    resp: reqwest::Response,
+    what: &str,
+    parse: impl FnOnce(&str) -> Result<T, serde_json::Error>,
+) -> Option<T> {
+    // Non-200 statuses are already logged by `send_request`
+    if !resp.status().is_success() {
+        return None;
+    }
+    match resp.text().await {
+        Ok(body) => parse(&body)
+            .inspect_err(|e| log::error!("Failed to parse {}: {}", what, e))
+            .ok(),
+        Err(e) => {
+            log::warn!("Failed to read {}: {}", what, e);
+            None
+        }
+    }
+}
+
 /// Log a response that isn't 200
 fn log_status(resp: &reqwest::Response) {
     let status = resp.status();
@@ -149,6 +172,19 @@ pub enum AppEvent {
         date: String,
         message: String,
     },
+    /// The standings request for `date` failed or returned unusable data
+    StandingsUnavailable {
+        date: String,
+        message: String,
+    },
+    /// A team stats request failed or returned unusable data
+    TeamStatsUnavailable {
+        team: TeamAbbrev,
+        year: i32,
+        /// Which request failed: playoffs or regular season
+        playoffs: bool,
+        message: String,
+    },
     TeamStatsRegularSeasonUpdate {
         team: TeamAbbrev,
         year: i32,
@@ -184,6 +220,17 @@ pub enum AppEvent {
     GameStoryUpdate {
         game_id: u32,
         parsed_game_story: GameStoryResponse,
+    },
+    /// The bracket request for `year` failed or returned unusable data
+    BracketUnavailable {
+        year: i32,
+        message: String,
+    },
+    /// The series request failed or returned unusable data
+    SeriesUnavailable {
+        year: i32,
+        letter: String,
+        message: String,
     },
     BracketUpdate {
         /// Season end year the bracket was fetched for

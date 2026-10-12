@@ -330,6 +330,25 @@ pub fn resolve_year(year: i32, seasons: &[SeasonBounds]) -> Option<YearResolutio
     }
 }
 
+/// The message for a season end year outside the known seasons, or `None` if
+/// it's in range (or the season list is empty). Shared by Team Stats and
+/// Playoffs so both word it the same way.
+pub fn year_out_of_range_message(year: i32, seasons: &[SeasonBounds]) -> Option<String> {
+    match resolve_year(year, seasons)? {
+        YearResolution::AfterLatest(latest) => Some(format!(
+            "No stats for this season yet. Latest available: {}-{}.",
+            latest - 1,
+            latest
+        )),
+        YearResolution::BeforeEarliest(earliest) => Some(format!(
+            "No stats for this season. Earliest available: {}-{}.",
+            earliest - 1,
+            earliest
+        )),
+        YearResolution::InRange => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,6 +356,32 @@ mod tests {
 
     fn d(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn out_of_range_years_get_the_shared_message() {
+        let seasons = vec![
+            SeasonBounds {
+                id: 19171918,
+                standings_start: "1917-12-19".to_string(),
+                standings_end: "1918-03-06".to_string(),
+            },
+            SeasonBounds {
+                id: 20262027,
+                standings_start: "2026-09-29".to_string(),
+                standings_end: "2026-10-10".to_string(),
+            },
+        ];
+        assert_eq!(
+            year_out_of_range_message(1915, &seasons).as_deref(),
+            Some("No stats for this season. Earliest available: 1917-1918.")
+        );
+        assert_eq!(
+            year_out_of_range_message(2030, &seasons).as_deref(),
+            Some("No stats for this season yet. Latest available: 2026-2027.")
+        );
+        assert_eq!(year_out_of_range_message(2005, &seasons), None);
+        assert_eq!(year_out_of_range_message(2027, &seasons), None);
     }
 
     #[test]

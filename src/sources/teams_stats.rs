@@ -2,9 +2,9 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use super::{AppEvent, Source, TabGate, send_request};
+use super::{AppEvent, Source, TabGate, read_json, send_request};
 use crate::models::TeamAbbrev;
-use crate::models::standings::{SeasonBounds, YearResolution, resolve_year};
+use crate::models::standings::{SeasonBounds, year_out_of_range_message};
 use crate::models::team_stats::TeamStatsResponse;
 
 /// Team stats change at most once per game, so a fixed interval is plenty
@@ -50,45 +50,20 @@ impl TeamStatsSource {
             return;
         }
 
-        if let Some(seasons) = self.seasons.as_deref() {
-            match resolve_year(self.current_year, seasons) {
-                Some(YearResolution::AfterLatest(latest)) => {
-                    let msg = format!(
-                        "No stats for this season yet. Latest available: {}-{}.",
-                        latest - 1,
-                        latest
-                    );
-                    log::debug!("Requested team-stats year is after latest season: {}", msg);
-                    let _ = tx
-                        .send(AppEvent::TeamStatsOutOfRange {
-                            team: self.current_team,
-                            year: self.current_year,
-                            message: msg,
-                        })
-                        .await;
-                    return;
-                }
-                Some(YearResolution::BeforeEarliest(earliest)) => {
-                    let msg = format!(
-                        "No stats for this season. Earliest available: {}-{}.",
-                        earliest - 1,
-                        earliest
-                    );
-                    log::debug!(
-                        "Requested team-stats year is before earliest season: {}",
-                        msg
-                    );
-                    let _ = tx
-                        .send(AppEvent::TeamStatsOutOfRange {
-                            team: self.current_team,
-                            year: self.current_year,
-                            message: msg,
-                        })
-                        .await;
-                    return;
-                }
-                _ => {}
-            }
+        if let Some(message) = self
+            .seasons
+            .as_deref()
+            .and_then(|seasons| year_out_of_range_message(self.current_year, seasons))
+        {
+            log::debug!("Requested team-stats year is out of range: {}", message);
+            let _ = tx
+                .send(AppEvent::TeamStatsOutOfRange {
+                    team: self.current_team,
+                    year: self.current_year,
+                    message,
+                })
+                .await;
+            return;
         }
 
         let regular_season_url = format!(
@@ -119,31 +94,15 @@ impl TeamStatsSource {
                         .await;
                     return;
                 }
-                if let Ok(body) = resp.text().await {
-                    // Parse the JSON
-                    match TeamStatsResponse::from_json(&body) {
-                        Ok(mut parsed_team_stats) => {
-                            log::debug!("Regular season team stats data successfully parsed");
-                            // Sort by points for skaters
-                            parsed_team_stats
-                                .skaters
-                                .sort_by_key(|s| std::cmp::Reverse(s.points));
-                            // Sort by games played for goalies
-                            parsed_team_stats
-                                .goalies
-                                .sort_by_key(|s| std::cmp::Reverse(s.games_played));
-                            let _ = tx
-                                .send(AppEvent::TeamStatsRegularSeasonUpdate {
-                                    team: self.current_team,
-                                    year: self.current_year,
-                                    stats: parsed_team_stats,
-                                })
-                                .await;
-                            log::debug!("Sent regular season team stats data to app");
-                        }
-                        Err(e) => log::error!("Failed to parse regular season team stats: {}", e),
-                    }
-                }
+                let event = match read_json(resp, "regular season team stats", parse_stats).await {
+                    Some(stats) => AppEvent::TeamStatsRegularSeasonUpdate {
+                        team: self.current_team,
+                        year: self.current_year,
+                        stats,
+                    },
+                    None => self.unavailable(false),
+                };
+                let _ = tx.send(event).await;
             }
             Err(err) => log::warn!("Failed to fetch regular season team stats: {}", err),
         }
@@ -157,35 +116,41 @@ impl TeamStatsSource {
 
         match send_request(self.client.get(&playoffs_url)).await {
             Ok(resp) => {
-                if let Ok(body) = resp.text().await {
-                    // Parse the JSON
-                    match TeamStatsResponse::from_json(&body) {
-                        Ok(mut parsed_team_stats) => {
-                            log::debug!("Playoffs team stats data successfully parsed");
-                            // Sort by points for skaters
-                            parsed_team_stats
-                                .skaters
-                                .sort_by_key(|s| std::cmp::Reverse(s.points));
-                            // Sort by games played for goalies
-                            parsed_team_stats
-                                .goalies
-                                .sort_by_key(|s| std::cmp::Reverse(s.games_played));
-                            let _ = tx
-                                .send(AppEvent::TeamStatsPlayoffsUpdate {
-                                    team: self.current_team,
-                                    year: self.current_year,
-                                    stats: parsed_team_stats,
-                                })
-                                .await;
-                            log::debug!("Sent playoffs team stats data to app");
-                        }
-                        Err(e) => log::error!("Failed to parse playoffs team stats: {}", e),
-                    }
-                }
+                let event = match read_json(resp, "playoffs team stats", parse_stats).await {
+                    Some(stats) => AppEvent::TeamStatsPlayoffsUpdate {
+                        team: self.current_team,
+                        year: self.current_year,
+                        stats,
+                    },
+                    None => self.unavailable(true),
+                };
+                let _ = tx.send(event).await;
             }
             Err(err) => log::warn!("Failed to fetch playoffs team stats: {}", err),
         }
     }
+}
+
+impl TeamStatsSource {
+    /// A request for the current team/season failed or returned unusable data
+    fn unavailable(&self, playoffs: bool) -> AppEvent {
+        AppEvent::TeamStatsUnavailable {
+            team: self.current_team,
+            year: self.current_year,
+            playoffs,
+            message: "No team stats available for this season.".to_string(),
+        }
+    }
+}
+
+/// Parse team stats, sorting skaters by points and goalies by games played
+fn parse_stats(body: &str) -> Result<TeamStatsResponse, serde_json::Error> {
+    let mut stats = TeamStatsResponse::from_json(body)?;
+    stats.skaters.sort_by_key(|s| std::cmp::Reverse(s.points));
+    stats
+        .goalies
+        .sort_by_key(|s| std::cmp::Reverse(s.games_played));
+    Ok(stats)
 }
 
 #[async_trait::async_trait]
