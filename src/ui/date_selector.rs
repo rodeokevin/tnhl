@@ -22,7 +22,7 @@ impl StatefulWidget for DateSelectorWidget {
             input_text: &state.text,
             border_color,
             info: None,
-            bottom_text: None,
+            bottom_text: Some("Hint: enter t for today"),
         }
         .render(area, buf);
     }

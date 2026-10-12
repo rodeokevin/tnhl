@@ -24,7 +24,7 @@ const GAMES_DOCS: &[&[&str; 2]; 12] = &[
     &["Page down", "shift + j/↓"],
     &["Page up", "shift + k/↑"],
     &["Toggle play-by-play", "p"],
-    &["Toggle play-by-play/info focus", "Tab"],
+    &["Toggle play-by-play/info focus", "tab"],
     &["Next info", ">"],
     &["Previous info", "<"],
     &["Select date", ":"],

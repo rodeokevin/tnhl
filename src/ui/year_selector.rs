@@ -22,7 +22,7 @@ impl StatefulWidget for YearSelectorWidget {
             input_text: &state.text,
             border_color,
             info: None,
-            bottom_text: Some("Hint: enter 2026 for 2025-2026 season"),
+            bottom_text: Some("Hint: enter t for current year"),
         }
         .render(area, buf);
     }

@@ -40,12 +40,27 @@ const COLOR_WIN: Color = BIG_SCORE_COLOR;
 const COLOR_LOSE: Color = Color::DarkGray;
 
 pub fn render_playoffs(frame: &mut Frame, app: &mut App, area: Rect) {
-    let outer_block = Block::bordered()
+    let mut outer_block = Block::bordered()
         .border_style(border_style())
         .title(format!(
             " {} Stanley Cup Playoffs ",
             app.state.date_state.year
         ));
+    // Too long for the menu hints, so it goes on the border like the Games
+    // prev/next dates; only when there are series to open
+    let has_series = app
+        .state
+        .playoffs
+        .bracket_data
+        .as_ref()
+        .is_some_and(|b| !b.series.is_empty());
+    if has_series {
+        outer_block = outer_block.title_top(
+            Line::from(" Hint: shift + series letter to open series ")
+                .style(Style::new().fg(Color::DarkGray))
+                .right_aligned(),
+        );
+    }
 
     let inner = outer_block.inner(area);
 
