@@ -123,7 +123,12 @@ pub fn render_boxscore(frame: &mut Frame, app: &mut App, area: Rect) {
         let table = create_table(rows, get_boxscore_title(is_home, boxscore), widths, header);
         frame.render_stateful_widget(table, area, &mut app.state.games.boxscore_table_state);
     } else {
-        frame.render_widget(Line::from("Loading boxscore...").centered(), area);
+        let missing = app.state.games.missing_text(
+            &app.state.games.boxscore_unavailable,
+            "Loading boxscore...",
+            "No boxscore available for this game.",
+        );
+        frame.render_widget(Line::from(missing).centered(), area);
     }
 }
 

@@ -4,7 +4,9 @@ use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 use crate::models::games::{game_story::GameStoryResponse, games::GameState};
-use crate::sources::{FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, send_request};
+use crate::sources::{
+    FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, read_json, send_request,
+};
 use crate::{AppEvent, Source};
 
 pub enum GameStoryCommand {
@@ -56,33 +58,28 @@ impl GameStorySource {
         };
         let url = format!("https://api-web.nhle.com/v1/wsc/game-story/{}", game_id);
 
-        match send_request(self.client.get(&url)).await {
-            Ok(resp) => {
-                if let Ok(body) = resp.text().await {
-                    match GameStoryResponse::from_json(&body) {
-                        Ok(parsed_game_story) => {
-                            self.last_fetched.insert(game_id, Instant::now());
-                            let _ = tx
-                                .send(AppEvent::GameStoryUpdate {
-                                    game_id,
-                                    parsed_game_story,
-                                })
-                                .await;
-                        }
-                        Err(e) => {
-                            log::error!("Failed to parse game story for game id {}: {}", game_id, e)
-                        }
-                    }
-                }
-            }
+        let resp = match send_request(self.client.get(&url)).await {
+            Ok(resp) => resp,
             Err(err) => {
                 log::warn!(
                     "Failed to fetch game story for game id {}: {}",
                     game_id,
                     err
-                )
+                );
+                return;
             }
-        }
+        };
+        // Any response counts as a fetch, failures included, so a game that just
+        // failed (e.g. rate limited) isn't refetched within the recent window
+        self.last_fetched.insert(game_id, Instant::now());
+        let event = match read_json(resp, "game story", GameStoryResponse::from_json).await {
+            Some(parsed) => AppEvent::GameStoryUpdate {
+                game_id,
+                parsed_game_story: parsed,
+            },
+            None => AppEvent::GameStoryUnavailable { game_id },
+        };
+        let _ = tx.send(event).await;
     }
 }
 

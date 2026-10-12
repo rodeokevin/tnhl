@@ -4,7 +4,9 @@ use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 use crate::models::games::{games::GameState, play_by_play::PlaysResponse};
-use crate::sources::{FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, send_request};
+use crate::sources::{
+    FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, read_json, send_request,
+};
 use crate::{AppEvent, Source};
 
 pub enum PlaysCommand {
@@ -59,29 +61,24 @@ impl PlaysSource {
             game_id
         );
 
-        match send_request(self.client.get(&url)).await {
-            Ok(resp) => {
-                if let Ok(body) = resp.text().await {
-                    match PlaysResponse::from_json(&body) {
-                        Ok(parsed_plays) => {
-                            self.last_fetched.insert(game_id, Instant::now());
-                            let _ = tx
-                                .send(AppEvent::PlaysUpdate {
-                                    game_id,
-                                    parsed_plays,
-                                })
-                                .await;
-                        }
-                        Err(e) => {
-                            log::error!("Failed to parse plays for game id {}: {}", game_id, e)
-                        }
-                    }
-                }
-            }
+        let resp = match send_request(self.client.get(&url)).await {
+            Ok(resp) => resp,
             Err(err) => {
-                log::warn!("Failed to fetch plays for game id {}: {}", game_id, err)
+                log::warn!("Failed to fetch plays for game id {}: {}", game_id, err);
+                return;
             }
-        }
+        };
+        // Any response counts as a fetch, failures included, so a game that just
+        // failed (e.g. rate limited) isn't refetched within the recent window
+        self.last_fetched.insert(game_id, Instant::now());
+        let event = match read_json(resp, "plays", PlaysResponse::from_json).await {
+            Some(parsed) => AppEvent::PlaysUpdate {
+                game_id,
+                parsed_plays: parsed,
+            },
+            None => AppEvent::PlaysUnavailable { game_id },
+        };
+        let _ = tx.send(event).await;
     }
 }
 

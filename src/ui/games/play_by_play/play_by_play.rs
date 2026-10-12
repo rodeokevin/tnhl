@@ -54,7 +54,12 @@ pub fn render_play_by_play(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let Some(plays) = plays else {
         // app.state.games.plays_len = 0;
-        frame.render_widget(Line::from("Loading play-by-play...").centered(), inner);
+        let missing = app.state.games.missing_text(
+            &app.state.games.plays_unavailable,
+            "Loading play-by-play...",
+            "No play-by-play available for this game.",
+        );
+        frame.render_widget(Line::from(missing).centered(), inner);
         return;
     };
 

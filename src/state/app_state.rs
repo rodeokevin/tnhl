@@ -322,11 +322,28 @@ impl AppState {
                     self.sync_selected_game();
                 }
             }
+            // A failed refresh keeps data already loaded for that game
+            AppEvent::BoxscoreUnavailable { game_id } => {
+                if !self.games.boxscore_data.contains_key(&game_id) {
+                    self.games.boxscore_unavailable.insert(game_id);
+                }
+            }
+            AppEvent::PlaysUnavailable { game_id } => {
+                if !self.games.plays_data.contains_key(&game_id) {
+                    self.games.plays_unavailable.insert(game_id);
+                }
+            }
+            AppEvent::GameStoryUnavailable { game_id } => {
+                if !self.games.game_story_data.contains_key(&game_id) {
+                    self.games.game_story_unavailable.insert(game_id);
+                }
+            }
             AppEvent::BoxscoreUpdate {
                 game_id,
                 parsed_boxscore,
             } => {
                 log::debug!("Updating boxscore data for game {}", game_id);
+                self.games.boxscore_unavailable.remove(&game_id);
                 self.games.boxscore_data.insert(game_id, parsed_boxscore);
             }
             AppEvent::PlaysUpdate {
@@ -334,6 +351,7 @@ impl AppState {
                 parsed_plays,
             } => {
                 log::debug!("Updating plays data for game {}", game_id);
+                self.games.plays_unavailable.remove(&game_id);
                 self.games.plays_data.insert(game_id, parsed_plays);
             }
             AppEvent::GameStoryUpdate {
@@ -341,6 +359,7 @@ impl AppState {
                 parsed_game_story,
             } => {
                 log::debug!("Updating game story data for game {}", game_id);
+                self.games.game_story_unavailable.remove(&game_id);
                 self.games
                     .game_story_data
                     .insert(game_id, parsed_game_story);
@@ -445,6 +464,7 @@ impl AppState {
                 let action = map_key(key_event, self);
                 self.handle_action(action);
             }
+            AppEvent::Shutdown => self.should_quit = true,
             AppEvent::Tick => {
                 self.games.sweeping_status_offset =
                     self.games.sweeping_status_offset.wrapping_add(1);
@@ -716,6 +736,9 @@ impl AppState {
             self.games.boxscore_data.clear();
             self.games.game_story_data.clear();
             self.games.plays_data.clear();
+            self.games.game_story_unavailable.clear();
+            self.games.boxscore_unavailable.clear();
+            self.games.plays_unavailable.clear();
             self.games.unavailable = None;
             self.games.reset_state();
             self.sync_selected_game();
@@ -902,17 +925,18 @@ impl AppState {
         date.is_none_or(|d| d == self.date_state.date.to_string())
     }
 
-    /// Scoreboard interval: fast only for today, and faster while games are on.
-    /// The other sources use fixed intervals or pick their own from the
-    /// selected game's state.
+    /// Scoreboard interval: fast whenever games are on, whatever "today" is (e.g.
+    /// games starting before the NHL game day rolls over), otherwise moderate
+    /// for today and slow for other dates. The other sources use fixed
+    /// intervals or pick their own from the selected game's state.
     fn set_fetch_interval(&self, live: bool) {
-        let interval = if self.date_state.date != self.date_state.today {
-            // Only today's scoreboard changes quickly; other dates' rarely do
-            FetchInterval::InfoLongInterval
-        } else if live {
+        let interval = if live {
             FetchInterval::GamesShortInterval
-        } else {
+        } else if self.date_state.date == self.date_state.today {
             FetchInterval::GamesLongInterval
+        } else {
+            // Other dates' scoreboards rarely change
+            FetchInterval::InfoLongInterval
         };
         self.games_tx
             .try_send(GamesCommand::SetInterval(interval.as_duration()))
@@ -1441,5 +1465,80 @@ mod tests {
         });
         assert!(state.playoffs.bracket_data.is_none());
         assert!(state.playoffs.bracket_unavailable.is_some());
+    }
+
+    #[test]
+    fn live_games_poll_fast_even_when_not_today() {
+        let (games_tx, mut games_rx) = tokio::sync::mpsc::channel(8);
+        let state = {
+            let mut state = test_state(games_tx);
+            state.date_state.today = chrono::NaiveDate::from_ymd_opt(2026, 10, 10).unwrap();
+            state.date_state.date = chrono::NaiveDate::from_ymd_opt(2026, 10, 11).unwrap();
+            state
+        };
+        let interval = |rx: &mut tokio::sync::mpsc::Receiver<GamesCommand>| loop {
+            match rx.try_recv() {
+                Ok(GamesCommand::SetInterval(d)) => break d,
+                Ok(_) => continue,
+                Err(e) => panic!("expected an interval: {e:?}"),
+            }
+        };
+
+        state.set_fetch_interval(true);
+        assert_eq!(
+            interval(&mut games_rx),
+            FetchInterval::GamesShortInterval.as_duration()
+        );
+        state.set_fetch_interval(false);
+        assert_eq!(
+            interval(&mut games_rx),
+            FetchInterval::InfoLongInterval.as_duration()
+        );
+    }
+
+    fn story() -> crate::models::games::game_story::GameStoryResponse {
+        crate::models::games::game_story::GameStoryResponse::from_json(r#"{"summary": null}"#)
+            .unwrap()
+    }
+
+    #[test]
+    fn per_game_failure_is_recorded_until_data_arrives() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.handle_event(AppEvent::GameStoryUnavailable { game_id: 7 });
+        state.handle_event(AppEvent::BoxscoreUnavailable { game_id: 7 });
+        state.handle_event(AppEvent::PlaysUnavailable { game_id: 7 });
+        assert!(state.games.game_story_unavailable.contains(&7));
+        assert!(state.games.boxscore_unavailable.contains(&7));
+        assert!(state.games.plays_unavailable.contains(&7));
+
+        // A later success clears the failure
+        state.handle_event(AppEvent::GameStoryUpdate {
+            game_id: 7,
+            parsed_game_story: story(),
+        });
+        assert!(!state.games.game_story_unavailable.contains(&7));
+    }
+
+    #[test]
+    fn per_game_failure_keeps_loaded_data() {
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.handle_event(AppEvent::GameStoryUpdate {
+            game_id: 7,
+            parsed_game_story: story(),
+        });
+        state.handle_event(AppEvent::GameStoryUnavailable { game_id: 7 });
+        assert!(state.games.game_story_data.contains_key(&7));
+        assert!(!state.games.game_story_unavailable.contains(&7));
+    }
+
+    #[test]
+    fn date_change_clears_per_game_failures() {
+        // Keep the receiver alive so the date change is accepted
+        let (games_tx, _games_rx) = tokio::sync::mpsc::channel(8);
+        let mut state = test_state(games_tx);
+        state.handle_event(AppEvent::BoxscoreUnavailable { game_id: 7 });
+        state.date_state.date = state.date_state.date.succ_opt().unwrap();
+        state.handle_date_change();
+        assert!(state.games.boxscore_unavailable.is_empty());
     }
 }

@@ -25,11 +25,12 @@ pub fn render_scoring(
     scroll_offset: usize,
     max_scroll: &mut usize,
     visible_rows: &mut usize,
+    missing_text: &str,
 ) {
     let Some(story) = maybe_game_story else {
         *max_scroll = 0;
         *visible_rows = 0;
-        frame.render_widget(Line::from("Loading scoring...").centered(), area);
+        frame.render_widget(Line::from(missing_text).centered(), area);
         return;
     };
 

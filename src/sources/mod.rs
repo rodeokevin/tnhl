@@ -209,6 +209,16 @@ pub enum AppEvent {
         date: String,
         message: String,
     },
+    /// A per-game request failed or returned unusable data
+    BoxscoreUnavailable {
+        game_id: u32,
+    },
+    PlaysUnavailable {
+        game_id: u32,
+    },
+    GameStoryUnavailable {
+        game_id: u32,
+    },
     BoxscoreUpdate {
         game_id: u32,
         parsed_boxscore: BoxscoreResponse,
@@ -255,6 +265,8 @@ pub enum AppEvent {
     Input(crossterm::event::KeyEvent),
     /// Periodic tick to refresh UI
     Tick,
+    /// A termination signal arrived: quit like `q`
+    Shutdown,
 }
 
 // async_trait marks its boxed future #[must_use], which clippy flags as redundant

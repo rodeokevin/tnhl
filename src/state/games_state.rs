@@ -6,7 +6,7 @@ use crate::models::games::{
 use crate::models::playoffs::series::SeriesResponse;
 use crate::state::app_state::{table_page_down, table_page_up};
 use ratatui::widgets::TableState;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum GamesFocus {
@@ -75,6 +75,11 @@ pub struct GamesState {
     pub boxscore_data: HashMap<u32, BoxscoreResponse>,
     pub game_story_data: HashMap<u32, GameStoryResponse>,
     pub plays_data: HashMap<u32, PlaysResponse>,
+    /// Games whose request failed with nothing loaded, so their views show a
+    /// message instead of "Loading"
+    pub game_story_unavailable: HashSet<u32>,
+    pub boxscore_unavailable: HashSet<u32>,
+    pub plays_unavailable: HashSet<u32>,
     pub total_goals_data: HashMap<u32, SeriesResponse>,
     pub selected_game_index: usize,
     // For the dynamic display bar under the time remaining
@@ -111,6 +116,9 @@ impl Default for GamesState {
             boxscore_data: HashMap::new(),
             game_story_data: HashMap::new(),
             plays_data: HashMap::new(),
+            game_story_unavailable: HashSet::new(),
+            boxscore_unavailable: HashSet::new(),
+            plays_unavailable: HashSet::new(),
             total_goals_data: HashMap::new(),
             selected_game_index: 0,
             sweeping_status_offset: 0,
@@ -291,6 +299,19 @@ impl GamesState {
     /// Return the current game id
     pub fn current_game_id(&self) -> Option<u32> {
         self.selected_game().map(|g| g.id)
+    }
+    /// What a view shows while its data for the selected game is missing:
+    /// `failed` if that game's request failed, otherwise `loading`
+    pub fn missing_text(
+        &self,
+        unavailable: &HashSet<u32>,
+        loading: &'static str,
+        failed: &'static str,
+    ) -> &'static str {
+        match self.current_game_id() {
+            Some(id) if unavailable.contains(&id) => failed,
+            _ => loading,
+        }
     }
     /// The `PlayData` currently highlighted in the play-by-play table, if any
     pub fn selected_play(&self) -> Option<&PlayData> {

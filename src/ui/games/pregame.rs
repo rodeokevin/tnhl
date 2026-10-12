@@ -36,17 +36,22 @@ pub fn render_pregame(
     scroll_offset: usize,
     max_scroll: &mut usize,
     visible_rows: &mut usize,
+    missing_text: &str,
 ) {
     let Some(story) = game_story else {
         *max_scroll = 0;
         *visible_rows = 0;
-        frame.render_widget(Line::from("Loading pre-game matchup…").centered(), area);
+        frame.render_widget(Line::from(missing_text).centered(), area);
         return;
     };
+    // The story loaded but has no matchup section (e.g. some special events)
     let Some(matchup) = story.pre_game_matchup.as_ref() else {
         *max_scroll = 0;
         *visible_rows = 0;
-        frame.render_widget(Line::from("Loading pre-game matchup…").centered(), area);
+        frame.render_widget(
+            Line::from("No pre-game matchup available for this game.").centered(),
+            area,
+        );
         return;
     };
 

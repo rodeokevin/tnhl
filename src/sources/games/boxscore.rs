@@ -4,7 +4,9 @@ use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 use crate::models::games::{boxscore::BoxscoreResponse, games::GameState};
-use crate::sources::{FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, send_request};
+use crate::sources::{
+    FETCH_DEBOUNCE, FetchInterval, RECENT_FETCH_WINDOW, TabGate, read_json, send_request,
+};
 use crate::{AppEvent, Source};
 
 pub enum BoxscoreCommand {
@@ -59,29 +61,24 @@ impl BoxscoreSource {
             game_id
         );
 
-        match send_request(self.client.get(&url)).await {
-            Ok(resp) => {
-                if let Ok(body) = resp.text().await {
-                    match BoxscoreResponse::from_json(&body) {
-                        Ok(parsed_boxscore) => {
-                            self.last_fetched.insert(game_id, Instant::now());
-                            let _ = tx
-                                .send(AppEvent::BoxscoreUpdate {
-                                    game_id,
-                                    parsed_boxscore,
-                                })
-                                .await;
-                        }
-                        Err(e) => {
-                            log::error!("Failed to parse boxscore for game id {}: {}", game_id, e)
-                        }
-                    }
-                }
-            }
+        let resp = match send_request(self.client.get(&url)).await {
+            Ok(resp) => resp,
             Err(err) => {
-                log::warn!("Failed to fetch boxscore for game id {}: {}", game_id, err)
+                log::warn!("Failed to fetch boxscore for game id {}: {}", game_id, err);
+                return;
             }
-        }
+        };
+        // Any response counts as a fetch, failures included, so a game that just
+        // failed (e.g. rate limited) isn't refetched within the recent window
+        self.last_fetched.insert(game_id, Instant::now());
+        let event = match read_json(resp, "boxscore", BoxscoreResponse::from_json).await {
+            Some(parsed) => AppEvent::BoxscoreUpdate {
+                game_id,
+                parsed_boxscore: parsed,
+            },
+            None => AppEvent::BoxscoreUnavailable { game_id },
+        };
+        let _ = tx.send(event).await;
     }
 }
 

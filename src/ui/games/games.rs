@@ -344,6 +344,12 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
         match &app.state.games.focus {
             // Before a game goes live, show the pre-game matchup
             GamesFocus::Pregame => {
+                // The game is borrowed from games_data, so check the field directly
+                let missing = if app.state.games.game_story_unavailable.contains(&game.id) {
+                    "No game details available for this game."
+                } else {
+                    "Loading pre-game matchup…"
+                };
                 pregame::render_pregame(
                     app.state.games.game_story_data.get(&game.id),
                     frame,
@@ -351,9 +357,16 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
                     app.state.games.scroll_offset,
                     &mut app.state.games.max_scroll,
                     &mut app.state.games.visible_rows,
+                    missing,
                 );
             }
             GamesFocus::Scoring => {
+                // The game is borrowed from games_data, so check the field directly
+                let missing = if app.state.games.game_story_unavailable.contains(&game.id) {
+                    "No game details available for this game."
+                } else {
+                    "Loading scoring..."
+                };
                 scoring::render_scoring(
                     app.state.games.game_story_data.get(&game.id),
                     frame,
@@ -361,6 +374,7 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
                     app.state.games.scroll_offset,
                     &mut app.state.games.max_scroll,
                     &mut app.state.games.visible_rows,
+                    missing,
                 );
             }
             GamesFocus::Boxscore => {

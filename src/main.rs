@@ -40,7 +40,8 @@ use crate::{
 };
 
 use simplelog::*;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::path::Path;
 
 use ratatui::{
     Terminal,
@@ -96,6 +97,20 @@ fn install_panic_hook() {
     }));
 }
 
+/// The log is cleared at startup once it grows past this; otherwise runs append
+const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Open the log file for appending. Append mode puts every write at the end of
+/// the file, so a second running copy can't leave a gap of NUL bytes the way
+/// truncating and writing at a stale offset does.
+fn open_log_file(path: &Path) -> io::Result<File> {
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    if file.metadata()?.len() > MAX_LOG_BYTES {
+        file.set_len(0)?;
+    }
+    Ok(file)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging before entering the alternate screen so any warning
@@ -106,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let settings = crate::state::app_settings::AppSettings::load_from_file();
     let log_level = settings.log_level.unwrap_or(LevelFilter::Error);
     match config::ConfigFile::get_log_location() {
-        Some(path) => match File::create(&path) {
+        Some(path) => match open_log_file(&path) {
             Ok(log_file) => {
                 if let Err(err) = WriteLogger::init(log_level, Config::default(), log_file) {
                     eprintln!("could not initialize logger: {err}");
@@ -116,6 +131,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         None => eprintln!("could not resolve a log file location; file logging disabled"),
     }
+    // Runs append to the same log, so mark where each one starts
+    log::info!("tnhl {} started", env!("CARGO_PKG_VERSION"));
     // Printed before the alternate screen opens, so they're still visible in the
     // terminal after quitting
     for warning in &settings.config_warnings {
@@ -371,6 +388,32 @@ where
             }
         }
     });
+
+    // Quit cleanly on termination signals (e.g. `kill` or the terminal tab
+    // closing), restoring the terminal the same way `q` does
+    #[cfg(unix)]
+    {
+        let signal_tx = tx.clone();
+        let signal_cancel = cancel.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{SignalKind, signal};
+            let (Ok(mut term), Ok(mut hup), Ok(mut int)) = (
+                signal(SignalKind::terminate()),
+                signal(SignalKind::hangup()),
+                signal(SignalKind::interrupt()),
+            ) else {
+                log::warn!("Could not listen for termination signals");
+                return;
+            };
+            tokio::select! {
+                _ = signal_cancel.cancelled() => return,
+                _ = term.recv() => log::info!("Received SIGTERM, quitting"),
+                _ = hup.recv() => log::info!("Received SIGHUP, quitting"),
+                _ = int.recv() => log::info!("Received SIGINT, quitting"),
+            }
+            let _ = signal_tx.send(AppEvent::Shutdown).await;
+        });
+    }
 
     // Spawn tick timer
     let tick_tx = tx;

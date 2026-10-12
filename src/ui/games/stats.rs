@@ -31,7 +31,12 @@ pub fn render_stats(frame: &mut Frame, app: &mut App, area: Rect) {
     let Some(game_story) = game_story else {
         app.state.games.max_scroll = 0;
         app.state.games.visible_rows = 0;
-        frame.render_widget(Line::from("Loading stats...").centered(), area);
+        let missing = app.state.games.missing_text(
+            &app.state.games.game_story_unavailable,
+            "Loading stats...",
+            "No game details available for this game.",
+        );
+        frame.render_widget(Line::from(missing).centered(), area);
         return;
     };
 
