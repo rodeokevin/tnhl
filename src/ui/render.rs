@@ -10,6 +10,7 @@ use crate::state::{
     app_state::{MenuFocus, PaneFocus},
     games_state::GamesFocus,
     playoffs_state::PlayoffsFocus,
+    standings_state::StandingsFocus,
 };
 use crate::ui::{
     date_selector::DateSelectorWidget, games::games, help::HelpWidget,
@@ -177,6 +178,20 @@ fn tab_hints(app: &App) -> Vec<(&'static str, &'static str)> {
             ("Pick team", "t"),
             ("Season type", "< >"),
         ],
+        MenuFocus::Standings => {
+            let standings = &app.state.standings;
+            // Only when there's more than one conference/division to cycle
+            if !standings.has_cyclable_subtype() {
+                return vec![];
+            }
+            match standings.selected_standings {
+                StandingsFocus::Division => vec![("Division", "< >")],
+                StandingsFocus::WildCard | StandingsFocus::Conference => {
+                    vec![("Conference", "< >")]
+                }
+                StandingsFocus::League => vec![],
+            }
+        }
         // Esc only does something in the series view
         MenuFocus::Playoffs if app.state.playoffs.focus == PlayoffsFocus::Series => {
             vec![("Back", "esc")]
