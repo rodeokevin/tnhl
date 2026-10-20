@@ -71,6 +71,15 @@ favorite_team = "MTL"
 log_level = "info"
 ```
 
+## Logging
+
+When `log_level` is set, tnhl writes a `tnhl.log` file to your OS data
+directory:
+
+- Linux: `~/.local/share/tnhl/tnhl.log`
+- macOS: `~/Library/Application Support/tnhl/tnhl.log`
+- Windows: `%APPDATA%\tnhl\data\tnhl.log`
+
 ## Acknowledgements
 
 tnhl was inspired by [mlbt](https://github.com/mlb-rs/mlbt), a terminal-based
