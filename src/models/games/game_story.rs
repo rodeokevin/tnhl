@@ -43,6 +43,8 @@ pub struct PreGameMatchup {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkatingLeaders {
+    /// How many recent games the leaders cover (e.g. 5 for the last 5 games).
+    pub game_limit: Option<u16>,
     pub leaders: Vec<LeaderCategory>,
 }
 

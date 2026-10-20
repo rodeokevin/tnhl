@@ -121,7 +121,12 @@ fn columns_row(away: String, middle: Line<'static>, home: String) -> Row<'static
 }
 
 fn build_leaders(matchup: &PreGameMatchup, rows: &mut Vec<Row<'static>>) {
-    rows.push(section_header("Stat Leaders"));
+    let title = match matchup.skating_leaders.game_limit {
+        Some(1) => "Last Game".to_string(),
+        Some(n) => format!("Last {} Games", n),
+        None => "Stat Leaders".to_string(),
+    };
+    rows.push(section_header(&title));
     let grey = Style::new().fg(Color::DarkGray);
     for cat in &matchup.skating_leaders.leaders {
         let away_str = cat
