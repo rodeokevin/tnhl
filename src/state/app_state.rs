@@ -225,13 +225,12 @@ impl AppState {
             AppEvent::TeamStatsUnavailable {
                 playoffs, message, ..
             } => {
-                let loaded = if playoffs {
-                    &self.team_stats.playoffs_team_stats_data
-                } else {
-                    &self.team_stats.regular_season_team_stats_data
-                };
-                if loaded.is_none() {
-                    self.team_stats.out_of_range = Some(message);
+                if playoffs {
+                    if self.team_stats.playoffs_team_stats_data.is_none() {
+                        self.team_stats.playoffs_unavailable = Some(message);
+                    }
+                } else if self.team_stats.regular_season_team_stats_data.is_none() {
+                    self.team_stats.regular_season_unavailable = Some(message);
                 }
             }
             AppEvent::BracketUnavailable { message, .. } => {
@@ -377,6 +376,7 @@ impl AppState {
                 log::debug!("Updating regular season team stats data");
                 self.team_stats.regular_season_team_stats_data = Some(parsed_team_stats);
                 self.team_stats.out_of_range = None;
+                self.team_stats.regular_season_unavailable = None;
             }
             AppEvent::TeamStatsPlayoffsUpdate {
                 stats: parsed_team_stats,
@@ -385,6 +385,7 @@ impl AppState {
                 log::debug!("Updating playoffs team stats data");
                 self.team_stats.playoffs_team_stats_data = Some(parsed_team_stats);
                 self.team_stats.out_of_range = None;
+                self.team_stats.playoffs_unavailable = None;
             }
             AppEvent::TeamStatsOutOfRange { message, .. } => {
                 log::debug!("Team stats year out of range: {}", message);
@@ -791,6 +792,8 @@ impl AppState {
             self.team_stats.regular_season_team_stats_data = None;
             self.team_stats.playoffs_team_stats_data = None;
             self.team_stats.out_of_range = None;
+            self.team_stats.regular_season_unavailable = None;
+            self.team_stats.playoffs_unavailable = None;
             self.team_stats.reset_state();
         }
     }
@@ -814,6 +817,8 @@ impl AppState {
             self.team_stats.regular_season_team_stats_data = None;
             self.team_stats.playoffs_team_stats_data = None;
             self.team_stats.out_of_range = None;
+            self.team_stats.regular_season_unavailable = None;
+            self.team_stats.playoffs_unavailable = None;
             self.team_stats.reset_state();
         }
     }
@@ -1416,7 +1421,7 @@ mod tests {
             playoffs: false,
             message: "x".to_string(),
         });
-        assert!(state.team_stats.out_of_range.is_none());
+        assert!(state.team_stats.regular_season_unavailable.is_none());
         // Playoffs aren't, so its failure shows the message
         state.handle_event(AppEvent::TeamStatsUnavailable {
             team: TeamAbbrev::MTL,
@@ -1424,8 +1429,33 @@ mod tests {
             playoffs: true,
             message: "No team stats available for this season.".to_string(),
         });
-        assert!(state.team_stats.out_of_range.is_some());
+        assert!(state.team_stats.playoffs_unavailable.is_some());
         assert!(state.team_stats.regular_season_team_stats_data.is_some());
+    }
+
+    #[test]
+    fn playoffs_success_keeps_regular_season_failure() {
+        use crate::models::TeamAbbrev;
+        let mut state = test_state(tokio::sync::mpsc::channel(8).0);
+        state.date_state.year = 2027;
+        state.team_stats.team_picker.current_team = TeamAbbrev::MTL;
+        // The source sends the regular season result, then the playoffs one
+        state.handle_event(AppEvent::TeamStatsUnavailable {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            playoffs: false,
+            message: "No team stats available for this season.".to_string(),
+        });
+        state.handle_event(AppEvent::TeamStatsPlayoffsUpdate {
+            team: TeamAbbrev::MTL,
+            year: 2027,
+            stats: crate::models::team_stats::TeamStatsResponse::from_json(
+                r#"{"skaters":[],"goalies":[]}"#,
+            )
+            .unwrap(),
+        });
+        assert!(state.team_stats.regular_season_unavailable.is_some());
+        assert!(state.team_stats.playoffs_unavailable.is_none());
     }
 
     #[test]

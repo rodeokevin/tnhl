@@ -32,6 +32,10 @@ pub struct TeamStatsState {
     pub regular_season_team_stats_data: Option<TeamStatsResponse>,
     pub playoffs_team_stats_data: Option<TeamStatsResponse>,
     pub out_of_range: Option<String>,
+    /// Shown instead of "Loading" when the regular season stats couldn't be loaded
+    pub regular_season_unavailable: Option<String>,
+    /// Shown instead of "Loading" when the playoffs stats couldn't be loaded
+    pub playoffs_unavailable: Option<String>,
     pub table_state: TableState,
     /// Number of visible rows in the table, updated during render
     pub visible_rows: usize,
@@ -53,6 +57,8 @@ impl Default for TeamStatsState {
             regular_season_team_stats_data: None,
             playoffs_team_stats_data: None,
             out_of_range: None,
+            regular_season_unavailable: None,
+            playoffs_unavailable: None,
             table_state: table(),
             visible_rows: 0,
             player_type: PlayerType::default(),

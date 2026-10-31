@@ -82,10 +82,16 @@ pub fn render_team_stats(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let team_data = if show_regular_season {
-        &app.state.team_stats.regular_season_team_stats_data
+    let (team_data, unavailable) = if show_regular_season {
+        (
+            &app.state.team_stats.regular_season_team_stats_data,
+            &app.state.team_stats.regular_season_unavailable,
+        )
     } else {
-        &app.state.team_stats.playoffs_team_stats_data
+        (
+            &app.state.team_stats.playoffs_team_stats_data,
+            &app.state.team_stats.playoffs_unavailable,
+        )
     };
 
     if let Some(data) = team_data {
@@ -124,7 +130,13 @@ pub fn render_team_stats(frame: &mut Frame, app: &mut App, area: Rect) {
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(table, inner, &mut app.state.team_stats.table_state);
-    } else if let Some(hint) = &app.state.team_stats.out_of_range {
+    } else if let Some(hint) = app
+        .state
+        .team_stats
+        .out_of_range
+        .as_ref()
+        .or(unavailable.as_ref())
+    {
         frame.render_widget(
             Line::from(hint.clone())
                 .style(Style::new().fg(Color::DarkGray))
