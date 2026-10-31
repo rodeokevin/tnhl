@@ -19,6 +19,24 @@ tnhl is a terminal-based NHL data dashboard built with Rust. It provides an inte
 
 ## Installation
 
+### Prebuilt binaries
+
+Prebuilt binaries for macOS (Apple Silicon and Intel), Linux (x86_64 and ARM64), and Windows are attached to each [GitHub release](https://github.com/rodeokevin/tnhl/releases).
+
+On macOS or Linux, install the latest release with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/rodeokevin/tnhl/releases/latest/download/tnhl-installer.sh | sh
+```
+
+On Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/rodeokevin/tnhl/releases/latest/download/tnhl-installer.ps1 | iex"
+```
+
+### From source
+
 Requires a [Rust toolchain](https://rustup.rs), version 1.88 or newer.
 
 Install from [crates.io](https://crates.io/crates/tnhl) with cargo:
