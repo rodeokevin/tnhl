@@ -111,8 +111,41 @@ fn open_log_file(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
+const HELP: &str = "\
+A terminal dashboard for NHL games, standings, team stats, and playoff brackets
+
+Usage: tnhl [OPTIONS]
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+Press ? inside the app to see all key bindings.";
+
+/// Handle command-line flags. Returns `false` when the app shouldn't start.
+fn handle_args() -> bool {
+    let Some(arg) = std::env::args().nth(1) else {
+        return true;
+    };
+    match arg.as_str() {
+        "-h" | "--help" => println!("{HELP}"),
+        "-V" | "--version" => println!("tnhl {}", env!("CARGO_PKG_VERSION")),
+        _ => {
+            eprintln!(
+                "tnhl: unexpected argument '{arg}'\n\nUsage: tnhl [OPTIONS]\n\nFor more information, try '--help'."
+            );
+            std::process::exit(2);
+        }
+    }
+    false
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    if !handle_args() {
+        return Ok(());
+    }
+
     // Initialize logging before entering the alternate screen so any warning
     // printed to stderr lands on the normal terminal rather than corrupting the
     // TUI. File logging is best-effort: if we can't resolve a data dir or

@@ -2,6 +2,7 @@
 name = "tnhl"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT"
 description = "A terminal dashboard for NHL games, standings, team stats, and playoff brackets"
 repository = "https://github.com/rodeokevin/tnhl"

@@ -21,7 +21,13 @@ tnhl is a terminal-based NHL data dashboard built with Rust. It provides an inte
 
 Requires a recent stable [Rust toolchain](https://rustup.rs).
 
-Install from GitHub with cargo:
+Install from [crates.io](https://crates.io/crates/tnhl) with cargo:
+
+```bash
+cargo install tnhl
+```
+
+Or install the latest development version from GitHub:
 
 ```bash
 cargo install --git https://github.com/rodeokevin/tnhl
