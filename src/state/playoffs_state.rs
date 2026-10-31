@@ -14,9 +14,6 @@ pub struct PlayoffsState {
     pub bracket_data: Option<BracketResponse>,
     /// Shown instead of "Loading" when the bracket couldn't be loaded
     pub bracket_unavailable: Option<String>,
-    /// Visible rows and columns updated at render
-    pub visible_rows: usize,
-    pub visible_columns: usize,
     // The letter representing the series. If None, the ui displays the bracket
     pub selected_series: Option<char>,
     pub series_data: Option<SeriesResponse>,

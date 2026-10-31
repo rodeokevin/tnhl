@@ -6,7 +6,6 @@ use chrono_tz::Tz;
 pub struct AppSettings {
     pub favorite_team: Option<TeamAbbrev>,
     pub timezone: Tz,
-    pub timezone_abbreviation: String,
     pub log_level: Option<log::LevelFilter>,
     /// Problems found in the config file, reported once logging is set up
     pub config_warnings: Vec<String>,

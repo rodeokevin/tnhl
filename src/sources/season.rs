@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -11,15 +11,22 @@ use crate::models::standings::{
 /// How long to wait between retries if the season bounds can't be fetched.
 const RETRY_INTERVAL: Duration = Duration::from_secs(30);
 
-/// NHL season bounds
+pub enum SeasonCommand {
+    /// Today's game day changed
+    SetToday(NaiveDate),
+}
+
+/// NHL season bounds. Re-fetched whenever the game day changes, since the
+/// current season's standingsEnd is today's date.
 pub struct SeasonSource {
     client: reqwest::Client,
+    rx: Receiver<SeasonCommand>,
     today: NaiveDate,
 }
 
 impl SeasonSource {
-    pub fn new(client: reqwest::Client, today: NaiveDate) -> Self {
-        Self { client, today }
+    pub fn new(client: reqwest::Client, rx: Receiver<SeasonCommand>, today: NaiveDate) -> Self {
+        Self { client, rx, today }
     }
 
     /// Try to fetch and parse the season bounds
@@ -73,34 +80,52 @@ impl SeasonSource {
 
 #[async_trait::async_trait]
 impl Source for SeasonSource {
-    async fn run(self: Box<Self>, tx: Sender<AppEvent>, cancel: CancellationToken) {
-        // First attempt.
-        if let Some(seasons) = tokio::select! {
-            _ = cancel.cancelled() => return,
-            seasons = self.try_fetch_bounds() => seasons,
-        } {
-            self.emit_resolved(&tx, seasons).await;
-            return;
-        }
+    async fn run(mut self: Box<Self>, tx: Sender<AppEvent>, cancel: CancellationToken) {
+        // Bounds have been emitted at least once
+        let mut resolved = false;
+        // The latest fetch failed, or the game day changed since the last one
+        let mut need_fetch = true;
 
-        // Fetch failed
-        let fallback = self.fallback_year();
-        log::warn!(
-            "Using fallback season end year {} while retrying season bounds",
-            fallback
-        );
-        let _ = tx.send(AppEvent::SeasonResolved { year: fallback }).await;
-
-        let mut interval = tokio::time::interval(RETRY_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        interval.tick().await; // consume the immediate first tick
         loop {
-            tokio::select! {
-                _ = cancel.cancelled() => break,
-                _ = interval.tick() => {
-                    if let Some(seasons) = self.try_fetch_bounds().await {
+            if need_fetch {
+                let seasons = tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    seasons = self.try_fetch_bounds() => seasons,
+                };
+                match seasons {
+                    Some(seasons) => {
                         self.emit_resolved(&tx, seasons).await;
-                        break;
+                        resolved = true;
+                        need_fetch = false;
+                    }
+                    // A failed refresh keeps the bounds already sent, so the
+                    // fallback year is only needed before the first success
+                    None if !resolved => {
+                        let fallback = self.fallback_year();
+                        log::warn!(
+                            "Using fallback season end year {} while retrying season bounds",
+                            fallback
+                        );
+                        let _ = tx.send(AppEvent::SeasonResolved { year: fallback }).await;
+                    }
+                    None => log::warn!("Season bounds refresh failed; retrying"),
+                }
+            }
+
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = tokio::time::sleep(RETRY_INTERVAL), if need_fetch => {}
+                Some(cmd) = self.rx.recv() => {
+                    match cmd {
+                        SeasonCommand::SetToday(date) => {
+                            if date != self.today {
+                                // The current season's standingsEnd tracks today, so
+                                // bounds fetched yesterday end a day short
+                                log::debug!("Game day changed to {}; refreshing season bounds", date);
+                                self.today = date;
+                                need_fetch = true;
+                            }
+                        }
                     }
                 }
             }

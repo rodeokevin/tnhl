@@ -84,10 +84,7 @@ pub fn render_playoffs(frame: &mut Frame, app: &mut App, area: Rect) {
             width: inner.width.saturating_sub(2),
             height: inner.height.saturating_sub(2),
         };
-        // Pass visible rows/columns and max scroll to playoff_bracket state
-        app.state.playoffs.visible_columns = bracket_area.width.saturating_sub(1) as usize;
-        app.state.playoffs.visible_rows = bracket_area.height.saturating_sub(1) as usize;
-
+        // Pass max scroll to playoff_bracket state
         app.state.playoffs.horizontal_max_scroll =
             canvas_width(layout_for_year(year), cw).saturating_sub(bracket_area.width) as usize;
         app.state.playoffs.vertical_max_scroll =
@@ -135,6 +132,8 @@ enum BracketLayout {
     ReseededTree,
     /// 16-team bracket
     Modern,
+    /// 2020: the 16-team bracket plus the qualifying round drawn below it
+    ModernWithQualifiers,
 }
 
 /// The letter assignment for a [`BracketLayout::MirroredTwoRound`] bracket
@@ -171,6 +170,7 @@ fn layout_for_year(year: i32) -> BracketLayout {
             right_qf: ["A", "D"],
         }),
         1975..=1979 => BracketLayout::ReseededTree,
+        2020 => BracketLayout::ModernWithQualifiers,
         _ => BracketLayout::Modern,
     }
 }
@@ -211,7 +211,7 @@ fn canvas_width(layout: BracketLayout, cw: u16) -> u16 {
         BracketLayout::DoubleDivision => 4 * cw + 3 * ROUND_HOR_GAP,
         BracketLayout::MirroredTwoRound(_) => 5 * cw + 4 * ROUND_HOR_GAP,
         BracketLayout::ReseededTree => 7 * cw + 6 * ROUND_HOR_GAP,
-        BracketLayout::Modern => 7 * cw + 6 * ROUND_HOR_GAP,
+        BracketLayout::Modern | BracketLayout::ModernWithQualifiers => 7 * cw + 6 * ROUND_HOR_GAP,
     }
 }
 fn canvas_height(layout: BracketLayout) -> u16 {
@@ -220,9 +220,30 @@ fn canvas_height(layout: BracketLayout) -> u16 {
         BracketLayout::DoubleDivision | BracketLayout::MirroredTwoRound(_) => {
             1 + 2 * CARD_HEIGHT + 1
         }
-        BracketLayout::ReseededTree | BracketLayout::Modern => 1 + 4 * CARD_HEIGHT + 3,
+        BracketLayout::ReseededTree | BracketLayout::Modern => MODERN_HEIGHT,
+        // Label row plus two rows of qualifier cards below the bracket
+        BracketLayout::ModernWithQualifiers => QUALIFIER_TOP + 1 + 2 * CARD_HEIGHT + 1,
     }
 }
+
+/// Height of the 16-team bracket: round labels plus four rows of cards
+const MODERN_HEIGHT: u16 = 1 + 4 * CARD_HEIGHT + 3;
+/// Where the 2020 qualifying round starts, one row below the bracket
+const QUALIFIER_TOP: u16 = MODERN_HEIGHT + 1;
+
+/// The 2020 qualifying-round letters with their (column, row) in a 2x2 grid
+/// under each conference's side: West (W–Z) on the left, East (S–V) on the
+/// right, matching the bracket's sides
+const QUALIFIER_SLOTS: [(&str, usize, usize); 8] = [
+    ("W", 0, 0),
+    ("X", 1, 0),
+    ("Y", 0, 1),
+    ("Z", 1, 1),
+    ("S", 5, 0),
+    ("T", 6, 0),
+    ("U", 5, 1),
+    ("V", 6, 1),
+];
 
 fn r1_y(row: usize) -> u16 {
     let gap = 1;
@@ -327,6 +348,28 @@ fn render_bracket(
             h_off,
             v_off,
         ),
+        BracketLayout::ModernWithQualifiers => {
+            render_modern_bracket(
+                frame,
+                area,
+                series_list,
+                bracket_series_data,
+                year,
+                cw,
+                h_off,
+                v_off,
+            );
+            render_qualifiers(
+                frame,
+                area,
+                series_list,
+                bracket_series_data,
+                year,
+                cw,
+                h_off,
+                v_off,
+            );
+        }
     }
 }
 
@@ -359,21 +402,221 @@ fn render_modern_bracket(
         }
     }
 
-    // Render a card at every known bracket position: the real series if the
-    // data contains it, otherwise an empty placeholder.
-    for &letter in &ALL_SERIES_LETTERS {
-        let Some((col, row)) = series_letter_to_position(letter) else {
+    // Render a card at every bracket position: the series placed there, or
+    // an empty placeholder. Series are placed by who advanced, so the fixed
+    // connector lines are right even in reseeded years.
+    let slots = modern_slots(series_list);
+    for &slot in &ALL_SERIES_LETTERS {
+        let Some((col, row)) = series_letter_to_position(slot) else {
             continue;
         };
         let (vx, vy) = card_virtual_pos(col, row, cw);
-        let series = series_list.iter().find(|s| s.series_letter == letter);
-        let cached = bracket_series_data.get(letter);
+        let series = slots.get(slot).map(|&i| &series_list[i]);
+        let cached = series.and_then(|s| bracket_series_data.get(&s.series_letter));
         render_series_card(frame, area, series, cached, year, cw, vx, vy, h_off, v_off);
     }
 
     // Connectors
     draw_east_connectors(frame, area, cw, h_off, v_off);
     draw_west_connectors(frame, area, cw, h_off, v_off);
+}
+
+/// The two earlier-round slots that feed a slot in the 16-team bracket
+fn skeleton_children(slot: &str) -> &'static [&'static str] {
+    match slot {
+        "O" => &["M", "N"],
+        "M" => &["I", "J"],
+        "N" => &["K", "L"],
+        "I" => &["A", "B"],
+        "J" => &["C", "D"],
+        "K" => &["E", "F"],
+        "L" => &["G", "H"],
+        _ => &[],
+    }
+}
+
+/// A slot and every slot that feeds into it
+fn slot_subtree(slot: &'static str) -> Vec<&'static str> {
+    let mut out = vec![slot];
+    for &child in skeleton_children(slot) {
+        out.extend(slot_subtree(child));
+    }
+    out
+}
+
+/// The slots of one round of the 16-team bracket
+fn round_slots(round: u8) -> &'static [&'static str] {
+    match round {
+        4 => &["O"],
+        3 => &["M", "N"],
+        2 => &["I", "J", "K", "L"],
+        1 => &["A", "B", "C", "D", "E", "F", "G", "H"],
+        _ => &[],
+    }
+}
+
+/// Place each series of a 16-team bracket in a slot (slot letter -> index
+/// into `series_list`) so every series sits where the fixed connector lines
+/// lead from the two series its teams won. Series stay in their own letter's
+/// slot whenever that's consistent, so only reseeded years move cards; series
+/// whose next round hasn't started keep their own letter if it's free.
+fn modern_slots(series_list: &[Series]) -> HashMap<&'static str, usize> {
+    // (winning team id, round) -> the series that team won in that round
+    let won_in_round: HashMap<(i32, u8), usize> = series_list
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| s.winning_team_id.map(|w| ((w, s.playoff_round), i)))
+        .collect();
+    let feeders = |idx: usize| -> Vec<usize> {
+        let s = &series_list[idx];
+        if s.playoff_round <= 1 {
+            return Vec::new();
+        }
+        [s.top_seed_team.as_ref(), s.bottom_seed_team.as_ref()]
+            .into_iter()
+            .flatten()
+            .filter_map(|t| won_in_round.get(&(t.id, s.playoff_round - 1)).copied())
+            .collect()
+    };
+    // How many series under `idx` (itself included) would sit in their own
+    // letter's slot if `idx` went in `slot`
+    fn fit(
+        idx: usize,
+        slot: &'static str,
+        series_list: &[Series],
+        feeders: &dyn Fn(usize) -> Vec<usize>,
+    ) -> usize {
+        let subtree = slot_subtree(slot);
+        let mut stack = vec![idx];
+        let mut n = 0;
+        while let Some(i) = stack.pop() {
+            if subtree.contains(&series_list[i].series_letter.as_str()) {
+                n += 1;
+            }
+            stack.extend(feeders(i));
+        }
+        n
+    }
+
+    let mut slots: HashMap<&'static str, usize> = HashMap::new();
+    let placed =
+        |slots: &HashMap<&'static str, usize>, idx: usize| slots.values().any(|&i| i == idx);
+
+    for round in (1..=4).rev() {
+        let free_slots = round_slots(round);
+        // Series not placed through a later round keep their own letter
+        // when it's free, otherwise take the first free slot of the round
+        let mut unplaced: Vec<usize> = (0..series_list.len())
+            .filter(|&i| series_list[i].playoff_round == round && !placed(&slots, i))
+            .collect();
+        unplaced.sort_by(|&a, &b| {
+            series_list[a]
+                .series_letter
+                .cmp(&series_list[b].series_letter)
+        });
+        for idx in unplaced {
+            let own = free_slots
+                .iter()
+                .find(|&&slot| slot == series_list[idx].series_letter && !slots.contains_key(slot));
+            if let Some(&slot) =
+                own.or_else(|| free_slots.iter().find(|&&slot| !slots.contains_key(slot)))
+            {
+                slots.insert(slot, idx);
+            }
+        }
+
+        // Put the series each placed series' teams came from in the slots
+        // that feed it, in whichever order keeps more series in their own slot
+        let parents: Vec<(&'static str, usize)> = free_slots
+            .iter()
+            .filter_map(|&slot| slots.get(slot).map(|&idx| (slot, idx)))
+            .collect();
+        for (slot, idx) in parents {
+            let kids: Vec<usize> = feeders(idx)
+                .into_iter()
+                .filter(|&k| !placed(&slots, k))
+                .collect();
+            let open: Vec<&'static str> = skeleton_children(slot)
+                .iter()
+                .copied()
+                .filter(|s| !slots.contains_key(s))
+                .collect();
+            match (kids.as_slice(), open.as_slice()) {
+                ([a, b], [x, y]) => {
+                    let keep =
+                        fit(*a, x, series_list, &feeders) + fit(*b, y, series_list, &feeders);
+                    let swap =
+                        fit(*a, y, series_list, &feeders) + fit(*b, x, series_list, &feeders);
+                    let (sa, sb) = if swap > keep { (y, x) } else { (x, y) };
+                    slots.insert(sa, *a);
+                    slots.insert(sb, *b);
+                }
+                _ => {
+                    let mut open = open;
+                    for &kid in &kids {
+                        let Some(best) = (0..open.len()).max_by_key(|&j| {
+                            (
+                                fit(kid, open[j], series_list, &feeders),
+                                std::cmp::Reverse(j),
+                            )
+                        }) else {
+                            break;
+                        };
+                        slots.insert(open.remove(best), kid);
+                    }
+                }
+            }
+        }
+    }
+    slots
+}
+
+/// Draw the 2020 qualifying round below the bracket, without connectors:
+/// the first round was reseeded after it, so there's no fixed path
+#[allow(clippy::too_many_arguments)]
+fn render_qualifiers(
+    frame: &mut Frame,
+    area: Rect,
+    series_list: &[Series],
+    bracket_series_data: &HashMap<String, SeriesResponse>,
+    year: i32,
+    cw: u16,
+    h_off: u16,
+    v_off: u16,
+) {
+    let qualifiers: Vec<&Series> = series_list
+        .iter()
+        .filter(|s| s.playoff_round == 0)
+        .collect();
+    if qualifiers.is_empty() {
+        return;
+    }
+    // The API's title ("Stanley Cup Qualifiers") is wider than a card
+    let label = "Qualifying Round";
+    for col in [0, 5] {
+        let vx = col as u16 * (cw + ROUND_HOR_GAP);
+        draw_round_label(frame, area, vx, QUALIFIER_TOP, cw, label, h_off, v_off);
+    }
+    for (letter, col, row) in QUALIFIER_SLOTS {
+        let Some(series) = qualifiers.iter().find(|s| s.series_letter == letter) else {
+            continue;
+        };
+        let vx = col as u16 * (cw + ROUND_HOR_GAP);
+        let vy = QUALIFIER_TOP + 1 + row as u16 * (CARD_HEIGHT + 1);
+        let cached = bracket_series_data.get(letter);
+        render_series_card(
+            frame,
+            area,
+            Some(series),
+            cached,
+            year,
+            cw,
+            vx,
+            vy,
+            h_off,
+            v_off,
+        );
+    }
 }
 
 fn round_label_for(series: &Series, cw: u16) -> Option<String> {
@@ -525,19 +768,6 @@ fn render_reseeded_tree(
             .collect()
     };
 
-    fn skeleton_children(letter: &str) -> &'static [&'static str] {
-        match letter {
-            "O" => &["M", "N"],
-            "M" => &["I", "J"],
-            "N" => &["K", "L"],
-            "I" => &["A", "B"],
-            "J" => &["C", "D"],
-            "K" => &["E", "F"],
-            "L" => &["G", "H"],
-            _ => &[],
-        }
-    }
-
     let mut slot: Map<usize, &'static str> = Map::new();
     fn assign_slots(
         idx: usize,
@@ -607,7 +837,8 @@ fn render_reseeded_tree(
         };
         let (vx, vy) = card_virtual_pos(col, row, cw);
         let series = &series_list[idx];
-        let cached = bracket_series_data.get(letter);
+        // Cached series are keyed by their own letter, not the slot
+        let cached = bracket_series_data.get(&series.series_letter);
         render_series_card(
             frame,
             area,
@@ -988,7 +1219,9 @@ fn render_series_card(
         },
     );
 
-    // Compute inner from VIRTUAL position so text doesn't shift when clipped
+    // Compute inner from the VIRTUAL position. Lines clipped off the top are
+    // skipped below so text stays put vertically, but a card clipped on the
+    // left lays its text out again in the visible width
     let inner_vx = ax + 1;
     let inner_vy = ay + 1;
     let inner_vw = cw as i32 - 2;
@@ -1143,7 +1376,12 @@ fn build_team_line<'a>(
         Some(s) if !s.is_empty() => format!("{s} {abbrev}"),
         _ => abbrev.to_string(),
     };
-    let pad = (width as usize).saturating_sub(name_str.len() + value_str.len());
+    // Keep at least one space before the score, shortening the name if needed
+    let width = width as usize;
+    let value_width = value_str.chars().count();
+    let name_room = width.saturating_sub(value_width + usize::from(value_width > 0));
+    let name_str: String = name_str.chars().take(name_room).collect();
+    let pad = width.saturating_sub(name_str.chars().count() + value_width);
     Line::from(vec![
         Span::styled(name_str, style),
         Span::raw(" ".repeat(pad)),
@@ -1151,8 +1389,10 @@ fn build_team_line<'a>(
     ])
 }
 
-/// Division letters
+/// Division letters, in series-letter order (A/B, C/D, E/F, G/H)
 const DIVISION_ORDER: [&str; 4] = ["A", "M", "C", "P"];
+/// 2021's realigned COVID divisions: East, Central, West, North
+const DIVISION_ORDER_2021: [&str; 4] = ["E", "C", "W", "N"];
 
 fn seed_label(
     year: i32,
@@ -1177,7 +1417,7 @@ fn seed_label(
                 Some(seed_rank_abbrev.to_string())
             } else {
                 // Expect "D1"/"D2"/"D3"; replace the leading "D" with the division letter.
-                let division = division_from_series_letter(series_letter)?;
+                let division = division_from_series_letter(year, series_letter)?;
                 let rank = seed_rank_abbrev.trim_start_matches(|c: char| c.is_ascii_alphabetic());
                 Some(format!("{division}{rank}"))
             }
@@ -1186,7 +1426,7 @@ fn seed_label(
     }
 }
 
-fn division_from_series_letter(series_letter: &str) -> Option<&'static str> {
+fn division_from_series_letter(year: i32, series_letter: &str) -> Option<&'static str> {
     let idx = match series_letter {
         "A" | "B" => 0,
         "C" | "D" => 1,
@@ -1194,7 +1434,12 @@ fn division_from_series_letter(series_letter: &str) -> Option<&'static str> {
         "G" | "H" => 3,
         _ => return None,
     };
-    Some(DIVISION_ORDER[idx])
+    let order = if year == 2021 {
+        &DIVISION_ORDER_2021
+    } else {
+        &DIVISION_ORDER
+    };
+    Some(order[idx])
 }
 
 fn draw_east_connectors(frame: &mut Frame, area: Rect, cw: u16, h_off: u16, v_off: u16) {
@@ -1451,9 +1696,11 @@ fn render_scroll_indicators(frame: &mut Frame, area: Rect, playoff_bracket: &Pla
 #[cfg(test)]
 mod tests {
     use super::{
-        BracketLayout, CARD_WIDTH, MirrorArrangement, canvas_height, canvas_width,
-        division_from_series_letter, layout_for_year, seed_label,
+        BracketLayout, CARD_WIDTH, MirrorArrangement, Series, build_team_line, canvas_height,
+        canvas_width, division_from_series_letter, layout_for_year, modern_slots, seed_label,
+        skeleton_children,
     };
+    use ratatui::{style::Style, text::Line};
 
     #[test]
     fn early_cup_layouts_are_classified() {
@@ -1556,15 +1803,15 @@ mod tests {
 
     #[test]
     fn division_from_letter_follows_fixed_order() {
-        assert_eq!(division_from_series_letter("A"), Some("A"));
-        assert_eq!(division_from_series_letter("B"), Some("A"));
-        assert_eq!(division_from_series_letter("C"), Some("M"));
-        assert_eq!(division_from_series_letter("D"), Some("M"));
-        assert_eq!(division_from_series_letter("E"), Some("C"));
-        assert_eq!(division_from_series_letter("F"), Some("C"));
-        assert_eq!(division_from_series_letter("G"), Some("P"));
-        assert_eq!(division_from_series_letter("H"), Some("P"));
-        assert_eq!(division_from_series_letter("I"), None);
+        assert_eq!(division_from_series_letter(2024, "A"), Some("A"));
+        assert_eq!(division_from_series_letter(2024, "B"), Some("A"));
+        assert_eq!(division_from_series_letter(2024, "C"), Some("M"));
+        assert_eq!(division_from_series_letter(2024, "D"), Some("M"));
+        assert_eq!(division_from_series_letter(2024, "E"), Some("C"));
+        assert_eq!(division_from_series_letter(2024, "F"), Some("C"));
+        assert_eq!(division_from_series_letter(2024, "G"), Some("P"));
+        assert_eq!(division_from_series_letter(2024, "H"), Some("P"));
+        assert_eq!(division_from_series_letter(2024, "I"), None);
     }
 
     #[test]
@@ -1597,9 +1844,114 @@ mod tests {
         assert_eq!(seed_label(2024, "C", 4, "WC2").as_deref(), Some("WC2"));
     }
 
+    fn line_text(line: &Line) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn team_line_never_runs_name_into_score() {
+        let style = Style::default();
+        // Exactly fills a 17-column card: the name is shortened by one
+        let line = build_team_line("Golden Knights", Some("1"), Some("4".into()), 17, style);
+        assert_eq!(line_text(&line), "1 Golden Knight 4");
+        let line = build_team_line("Kings", Some("1"), Some("4".into()), 17, style);
+        assert_eq!(line_text(&line), "1 Kings         4");
+    }
+
+    #[test]
+    fn covid_2021_uses_its_own_divisions() {
+        assert_eq!(seed_label(2021, "A", 1, "D1").as_deref(), Some("E1"));
+        assert_eq!(seed_label(2021, "D", 3, "D3").as_deref(), Some("C3"));
+        assert_eq!(seed_label(2021, "E", 1, "D1").as_deref(), Some("W1"));
+        assert_eq!(seed_label(2021, "H", 2, "D2").as_deref(), Some("N2"));
+    }
+
     #[test]
     fn unsupported_years_have_no_label() {
         assert_eq!(seed_label(1993, "A", 1, "D1"), None);
         assert_eq!(seed_label(1980, "A", 1, ""), None);
+    }
+
+    /// 1981's bracket, reseeded league-wide: (letter, round, top id, top
+    /// abbrev, bottom id, bottom abbrev, winner id)
+    const BRACKET_1981: [(&str, u8, i32, &str, i32, &str, i32); 15] = [
+        ("A", 1, 2, "NYI", 10, "TOR", 2),
+        ("B", 1, 19, "STL", 5, "PIT", 19),
+        ("C", 1, 8, "MTL", 22, "EDM", 22),
+        ("D", 1, 26, "LAK", 3, "NYR", 3),
+        ("E", 1, 7, "BUF", 23, "VAN", 7),
+        ("F", 1, 4, "PHI", 32, "QUE", 4),
+        ("G", 1, 20, "CGY", 16, "CHI", 20),
+        ("H", 1, 6, "BOS", 31, "MNS", 31),
+        ("I", 2, 2, "NYI", 22, "EDM", 2),
+        ("J", 2, 19, "STL", 3, "NYR", 3),
+        ("K", 2, 7, "BUF", 31, "MNS", 31),
+        ("L", 2, 4, "PHI", 20, "CGY", 20),
+        ("M", 3, 2, "NYI", 3, "NYR", 2),
+        ("N", 3, 20, "CGY", 31, "MNS", 31),
+        ("O", 4, 2, "NYI", 31, "MNS", 2),
+    ];
+
+    fn series_1981() -> Vec<Series> {
+        let team = |id: i32, abbrev: &str| {
+            format!(
+                r#"{{"id":{id},"abbrev":"{abbrev}","name":{{"default":"x"}},"commonName":{{"default":"x"}}}}"#
+            )
+        };
+        BRACKET_1981
+            .iter()
+            .map(|&(letter, round, top, top_abbrev, bottom, bottom_abbrev, winner)| {
+                let json = format!(
+                    r#"{{"seriesTitle":"","seriesAbbrev":"","seriesLetter":"{letter}","playoffRound":{round},"topSeedRank":1,"topSeedRankAbbrev":"","topSeedWins":0,"bottomSeedRank":2,"bottomSeedRankAbbrev":"","bottomSeedWins":0,"topSeedTeam":{},"bottomSeedTeam":{},"winningTeamId":{winner},"losingTeamId":null}}"#,
+                    team(top, top_abbrev),
+                    team(bottom, bottom_abbrev),
+                );
+                serde_json::from_str(&json).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reseeded_bracket_moves_cards_so_lines_follow_winners() {
+        let series = series_1981();
+        let slots = modern_slots(&series);
+        let letter_at = |slot: &str| series[slots[slot]].series_letter.as_str();
+        // NYI (from A) met EDM (from C) in I, so C sits next to A
+        assert_eq!(letter_at("A"), "A");
+        assert_eq!(letter_at("B"), "C");
+        assert_eq!(letter_at("C"), "B");
+        assert_eq!(letter_at("I"), "I");
+        // Every later-round series is fed by the slots its lines come from
+        for (&slot, &idx) in &slots {
+            let kids = skeleton_children(slot);
+            if kids.is_empty() {
+                continue;
+            }
+            let winners: Vec<i32> = kids
+                .iter()
+                .filter_map(|k| series[slots[k]].winning_team_id)
+                .collect();
+            let s = &series[idx];
+            for team in [&s.top_seed_team, &s.bottom_seed_team]
+                .into_iter()
+                .flatten()
+            {
+                assert!(winners.contains(&team.id), "slot {slot}");
+            }
+        }
+    }
+
+    #[test]
+    fn unreseeded_bracket_keeps_every_card_in_place() {
+        // Relabel 1981 so each series sits where the fixed tree expects
+        let mut series = series_1981();
+        let slots = modern_slots(&series);
+        for (&slot, &idx) in &slots {
+            series[idx].series_letter = slot.to_string();
+        }
+        let slots = modern_slots(&series);
+        for (&slot, &idx) in &slots {
+            assert_eq!(series[idx].series_letter, slot);
+        }
     }
 }

@@ -203,8 +203,8 @@ fn draw_boards(ctx: &mut ratatui::widgets::canvas::Context) {
         sx,
         -RINK_HALF_Y,
         BOARDS_COLOR,
-    )); // top
-    ctx.draw(&Line::new(-sx, RINK_HALF_Y, sx, RINK_HALF_Y, BOARDS_COLOR)); // bottom
+    )); // bottom (canvas y grows upward)
+    ctx.draw(&Line::new(-sx, RINK_HALF_Y, sx, RINK_HALF_Y, BOARDS_COLOR)); // top
     ctx.draw(&Line::new(
         -RINK_HALF_X,
         -sy,
@@ -215,10 +215,10 @@ fn draw_boards(ctx: &mut ratatui::widgets::canvas::Context) {
     ctx.draw(&Line::new(RINK_HALF_X, -sy, RINK_HALF_X, sy, BOARDS_COLOR)); // right
 
     // Corner boards (rounded)
-    draw_arc(ctx, -sx, -sy, CORNER_RADIUS, 180.0, 270.0, BOARDS_COLOR); // top-left
-    draw_arc(ctx, sx, -sy, CORNER_RADIUS, 270.0, 360.0, BOARDS_COLOR); // top-right
-    draw_arc(ctx, sx, sy, CORNER_RADIUS, 0.0, 90.0, BOARDS_COLOR); // bottom-right
-    draw_arc(ctx, -sx, sy, CORNER_RADIUS, 90.0, 180.0, BOARDS_COLOR); // bottom-left
+    draw_arc(ctx, -sx, -sy, CORNER_RADIUS, 180.0, 270.0, BOARDS_COLOR); // bottom-left
+    draw_arc(ctx, sx, -sy, CORNER_RADIUS, 270.0, 360.0, BOARDS_COLOR); // bottom-right
+    draw_arc(ctx, sx, sy, CORNER_RADIUS, 0.0, 90.0, BOARDS_COLOR); // top-right
+    draw_arc(ctx, -sx, sy, CORNER_RADIUS, 90.0, 180.0, BOARDS_COLOR); // top-left
 }
 
 /// Draw a full circle centered at `(cx, cy)`

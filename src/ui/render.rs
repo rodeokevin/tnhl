@@ -210,7 +210,7 @@ fn render_date_picker(f: &mut Frame, app: &mut App, rect: Rect) {
             f.render_stateful_widget(YearSelectorWidget {}, chunk, &mut app.state.date_state)
         }
     }
-    let (cx, cy) = popup_cursor_position(chunk, app.state.date_state.text.len() as u16);
+    let (cx, cy) = popup_cursor_position(chunk, &app.state.date_state.text);
     f.set_cursor_position((cx, cy));
 }
 
@@ -222,7 +222,7 @@ fn render_team_picker(f: &mut Frame, app: &mut App, rect: Rect) {
         &mut app.state.team_stats.team_picker,
     );
 
-    let (cx, cy) = popup_cursor_position(chunk, app.state.team_stats.team_picker.text.len() as u16);
+    let (cx, cy) = popup_cursor_position(chunk, &app.state.team_stats.team_picker.text);
     f.set_cursor_position((cx, cy));
 }
 

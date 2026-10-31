@@ -92,8 +92,6 @@ pub struct GamesState {
     pub plays_visible: bool,
     pub plays_focused: bool,
     pub plays_table_state: TableState,
-    // pub plays_visible_rows: usize,
-    // pub plays_len: usize,
 }
 
 impl Default for GamesState {
@@ -128,8 +126,6 @@ impl Default for GamesState {
             plays_visible: false,
             plays_focused: false,
             plays_table_state: table(),
-            // plays_visible_rows: 0,
-            // plays_len: 0,
         }
     }
 }
@@ -188,15 +184,9 @@ impl GamesState {
     }
     pub fn plays_page_up(&mut self) {
         self.plays_table_state.scroll_up_by(5);
-        // table_page_up(self.plays_visible_rows, &mut self.plays_table_state);
     }
     pub fn plays_page_down(&mut self) {
         self.plays_table_state.scroll_down_by(5);
-        // table_page_down(
-        //     self.plays_visible_rows,
-        //     self.plays_len,
-        //     &mut self.plays_table_state,
-        // );
     }
     /// Reset all state in games to default
     pub fn reset_state(&mut self) {
@@ -320,6 +310,28 @@ impl GamesState {
             .and_then(|id| self.plays_data.get(&id))?;
         let selected = self.plays_table_state.selected()?;
         plays.plays.iter().rev().nth(selected)
+    }
+
+    /// Keep the highlight on the same play when a refresh adds newer plays
+    /// above it. The newest play (row 0) stays selected so it follows the game.
+    pub fn keep_selected_play(&mut self, new_plays: &PlaysResponse) {
+        let Some(selected) = self.plays_table_state.selected().filter(|&i| i > 0) else {
+            return;
+        };
+        let Some(event_id) = self.selected_play().map(|p| p.event_id) else {
+            return;
+        };
+        let Some(index) = new_plays
+            .plays
+            .iter()
+            .rev()
+            .position(|p| p.event_id == event_id)
+        else {
+            return;
+        };
+        self.plays_table_state.select(Some(index));
+        let offset = self.plays_table_state.offset_mut();
+        *offset = offset.saturating_add_signed(index as isize - selected as isize);
     }
 
     /// The `(x, y)` coordinates of the currently selected play

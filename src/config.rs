@@ -1,8 +1,7 @@
 use crate::models::TeamAbbrev;
 use crate::state::app_settings::AppSettings;
 use anyhow::Context;
-use chrono::{TimeZone, Utc};
-use chrono_tz::{OffsetName, Tz};
+use chrono_tz::Tz;
 use directories::ProjectDirs;
 use log::{LevelFilter, error};
 use serde::{Deserialize, Serialize};
@@ -73,7 +72,6 @@ impl Into<AppSettings> for ConfigFile {
         AppSettings {
             favorite_team,
             timezone: self.validate_timezone(),
-            timezone_abbreviation: self.get_timezone_abbreviation(),
             log_level: self.validate_log_level(),
             config_warnings: self.warnings,
         }
@@ -122,14 +120,6 @@ impl ConfigFile {
             LogLevel::Warn => LevelFilter::Warn,
             LogLevel::Error => LevelFilter::Error,
         })
-    }
-
-    /// Get the abbreviated name of the configured timezone, (e.g. "PST" or "PDT")
-    fn get_timezone_abbreviation(&self) -> String {
-        let tz = self.timezone.unwrap_or(Self::DEFAULT_TIMEZONE);
-        let now = Utc::now().with_timezone(&tz).naive_utc();
-        let offset = tz.offset_from_utc_datetime(&now);
-        offset.abbreviation().unwrap_or("~~").to_string()
     }
 
     /// Generate the path of the config file for the current operating system:

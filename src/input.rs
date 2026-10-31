@@ -113,6 +113,12 @@ pub enum Action {
     None,
 }
 
+/// Whether a character key with these modifiers types text: no modifier
+/// besides Shift
+fn is_typed(modifiers: KeyModifiers) -> bool {
+    modifiers.difference(KeyModifiers::SHIFT).is_empty()
+}
+
 /// Map a key event to an application action.
 ///
 /// Only handles `Press` and `Repeat` events — `Release` events are ignored
@@ -131,9 +137,12 @@ pub fn map_key(key_event: KeyEvent, state: &mut AppState) -> Action {
         // Ctrl + c quits no matter what
         (_, _, Char('c'), KeyModifiers::CONTROL) => Action::Quit,
 
-        // In DatePicker or TeamPicker, capture all input
-        (PaneFocus::DatePicker, _, Char(c), _) => Action::DatePickerInputChar(c),
-        (PaneFocus::TeamPicker, _, Char(c), _) => Action::TeamPickerInputChar(c),
+        // In DatePicker or TeamPicker, capture all input. Only plain or
+        // shifted characters are typed; other chords (Ctrl+U, Alt+B, ...) are
+        // swallowed rather than typing the letter or reaching the bindings below.
+        (PaneFocus::DatePicker, _, Char(c), m) if is_typed(m) => Action::DatePickerInputChar(c),
+        (PaneFocus::TeamPicker, _, Char(c), m) if is_typed(m) => Action::TeamPickerInputChar(c),
+        (PaneFocus::DatePicker | PaneFocus::TeamPicker, _, Char(_), _) => Action::None,
 
         // q quits if we are not in any picker widgets
         (_, _, Char('q'), _) => Action::Quit,
@@ -144,8 +153,6 @@ pub fn map_key(key_event: KeyEvent, state: &mut AppState) -> Action {
         }
         (PaneFocus::Content, _, KeyCode::Char(':'), _) => Action::EnterDatePicker,
         (PaneFocus::Content, _, KeyCode::Char('?'), _) => Action::EnterHelp,
-
-        // (_, _, KeyCode::Char('r), _) => self.refresh(),
 
         // Selecting a menu
         (PaneFocus::Content, _, KeyCode::Char('1'), _) => Action::SelectMenu(1),
@@ -365,5 +372,20 @@ pub fn map_key(key_event: KeyEvent, state: &mut AppState) -> Action {
         (PaneFocus::Help, _, KeyCode::Esc, _) => Action::ExitHelp,
 
         _ => Action::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_typed;
+    use crossterm::event::KeyModifiers;
+
+    #[test]
+    fn only_plain_or_shifted_keys_type_text() {
+        assert!(is_typed(KeyModifiers::NONE));
+        assert!(is_typed(KeyModifiers::SHIFT));
+        assert!(!is_typed(KeyModifiers::CONTROL));
+        assert!(!is_typed(KeyModifiers::ALT));
+        assert!(!is_typed(KeyModifiers::CONTROL | KeyModifiers::SHIFT));
     }
 }

@@ -89,7 +89,7 @@ const BOXSCORE_GOALIES_COLUMN_WIDTHS: [Constraint; 11] = [
 ];
 
 pub fn render_boxscore(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Pass visible rows to standings state
+    // Pass visible rows to games state
     app.state.games.visible_rows = area.height.saturating_sub(3) as usize;
 
     let is_home = matches!(&app.state.games.boxscore_selected_team, BoxscoreTeam::Home);

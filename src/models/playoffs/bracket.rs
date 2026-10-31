@@ -18,15 +18,6 @@ impl BracketResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Round {
-    pub round_number: u8,
-    pub round_label: String,
-    pub round_abbrev: String,
-    pub series: Vec<Series>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Series {
     pub series_title: String,
     pub series_abbrev: String,

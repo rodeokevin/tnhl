@@ -19,6 +19,12 @@ pub enum Position {
     Defense,
     #[serde(rename = "G")]
     Goalie,
+    /// Some old international games list skaters as plain forwards
+    #[serde(rename = "F")]
+    Forward,
+    /// Any other code, so one odd player doesn't fail the whole response
+    #[serde(other)]
+    Unknown,
 }
 
 impl fmt::Display for Position {
@@ -29,7 +35,24 @@ impl fmt::Display for Position {
             Position::Center => "C",
             Position::Defense => "D",
             Position::Goalie => "G",
+            Position::Forward => "F",
+            Position::Unknown => "-",
         };
         write!(f, "{}", s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Position;
+
+    #[test]
+    fn forward_and_unknown_positions_parse() {
+        let parsed: Vec<Position> = serde_json::from_str(r#"["C","F","X"]"#).unwrap();
+        assert!(matches!(
+            parsed.as_slice(),
+            [Position::Center, Position::Forward, Position::Unknown]
+        ));
+        assert_eq!(Position::Forward.to_string(), "F");
     }
 }

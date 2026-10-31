@@ -5,6 +5,7 @@ pub mod input_popup;
 pub mod layout;
 pub mod playoffs;
 pub mod render;
+pub mod splash;
 pub mod standings;
 pub mod team_stats;
 pub mod year_selector;

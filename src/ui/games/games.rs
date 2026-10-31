@@ -182,7 +182,9 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = block.inner(tab_content_chunks[1]);
     frame.render_widget(block, tab_content_chunks[1]);
 
-    let show_rink = app.state.games.plays_visible && inner.height >= MIN_HEIGHT_FOR_RINK;
+    let show_rink = app.state.games.plays_visible
+        && app.state.games.focus != GamesFocus::Pregame
+        && inner.height >= MIN_HEIGHT_FOR_RINK;
 
     // Coordinates of the selected play
     let play_coords = if show_rink {
@@ -270,13 +272,7 @@ pub fn render_games(frame: &mut Frame, app: &mut App, area: Rect) {
                 Constraint::Length(1), // Shots on goal
             ],
         );
-        render_time_remaining(
-            game,
-            app.settings.timezone,
-            &app.settings.timezone_abbreviation,
-            frame,
-            upper_info_chunks[0],
-        );
+        render_time_remaining(game, app.settings.timezone, frame, upper_info_chunks[0]);
         render_sweeping_status(
             game,
             10,
@@ -401,13 +397,7 @@ pub fn get_color_from_game_state(state: &GameState) -> Style {
     }
 }
 
-pub fn render_time_remaining(
-    game: &GameData,
-    timezone: Tz,
-    timezone_abbr: &str,
-    frame: &mut Frame,
-    area: Rect,
-) {
+pub fn render_time_remaining(game: &GameData, timezone: Tz, frame: &mut Frame, area: Rect) {
     // Not in intermission
     if matches!(game.game_state, GameState::LIVE | GameState::CRIT)
         && let (Some(clock), Some(period)) = (&game.clock, &game.period_descriptor)
@@ -449,11 +439,11 @@ pub fn render_time_remaining(
         return;
     }
     let line = match game.game_state {
-        GameState::FUT | GameState::PRE => Line::from(format!(
-            "{} {}",
-            game.compute_local_time(timezone).format("%-I:%M %p"),
-            timezone_abbr,
-        )),
+        GameState::FUT | GameState::PRE => Line::from(
+            game.compute_local_time(timezone)
+                .format("%-I:%M %p %Z")
+                .to_string(),
+        ),
         GameState::LIVE | GameState::CRIT => {
             // in intermission or clock is None
             match (game.clock.as_ref(), game.period_descriptor.as_ref()) {

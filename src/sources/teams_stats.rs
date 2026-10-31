@@ -185,7 +185,7 @@ impl Source for TeamStatsSource {
                                 interval.reset();
                             }
                         }
-                        // Bounds are resolved exactly once by SeasonSource
+                        // SeasonSource re-sends bounds when the game day changes
                         TeamStatsCommand::SetSeasonBounds(seasons) => {
                             self.seasons = Some(seasons);
                             if self.gate.target_changed() {

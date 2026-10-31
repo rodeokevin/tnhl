@@ -9,14 +9,14 @@ pub enum InputError {
 
 pub struct TeamPickerState {
     pub is_valid: bool,
-    /// Current user input in the date picker
+    /// Current user input in the team picker
     pub text: String,
     /// Current team
     pub current_team: TeamAbbrev,
 }
 
 impl TeamPickerState {
-    /// Validate the input date
+    /// Validate the input team
     pub fn validate_input(&mut self) -> Result<TeamAbbrev, InputError> {
         let input: String = std::mem::take(&mut self.text);
         let input = input.trim();

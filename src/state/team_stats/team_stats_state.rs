@@ -101,7 +101,7 @@ impl TeamStatsState {
             &mut self.table_state,
         );
     }
-    /// Reset standings to default state
+    /// Reset team stats to default state
     pub fn reset_state(&mut self) {
         self.reset_table_state();
         self.game_type = GameType::default();

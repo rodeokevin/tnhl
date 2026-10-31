@@ -7,6 +7,7 @@ use crate::{
         playoffs::{
             bracket::BracketCommand, bracket_series::BracketSeriesCommand, series::SeriesCommand,
         },
+        season::SeasonCommand,
         standings::StandingsCommand,
         teams_stats::TeamStatsCommand,
     },
@@ -33,6 +34,7 @@ impl App {
         series_tx: Sender<SeriesCommand>,
         total_goals_tx: Sender<TotalGoalsCommand>,
         bracket_series_tx: Sender<BracketSeriesCommand>,
+        season_tx: Sender<SeasonCommand>,
     ) -> Self {
         let mut app = Self {
             state: AppState::new(
@@ -46,6 +48,7 @@ impl App {
                 series_tx,
                 total_goals_tx,
                 bracket_series_tx,
+                season_tx,
             ),
             settings,
         };

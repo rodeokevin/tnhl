@@ -19,7 +19,7 @@ tnhl is a terminal-based NHL data dashboard built with Rust. It provides an inte
 
 ## Installation
 
-Requires a recent stable [Rust toolchain](https://rustup.rs).
+Requires a [Rust toolchain](https://rustup.rs), version 1.88 or newer.
 
 Install from [crates.io](https://crates.io/crates/tnhl) with cargo:
 
@@ -44,6 +44,11 @@ cargo run --release
 ```
 
 ## Usage
+
+Run `tnhl` to open the dashboard. `tnhl --help` shows the command-line
+options and `tnhl --version` prints the version.
+
+Inside the app:
 
 - `1` – Games
 - `2` – Standings

@@ -32,7 +32,7 @@ use crate::{
             bracket_series::{BracketSeriesCommand, BracketSeriesSource},
             series::{SeriesCommand, SeriesSource},
         },
-        season::SeasonSource,
+        season::{SeasonCommand, SeasonSource},
         standings::{StandingsCommand, StandingsSource},
         teams_stats::{TeamStatsCommand, TeamStatsSource},
         today::{TodaySource, fetch_today},
@@ -47,7 +47,7 @@ use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
     crossterm::{
-        event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
+        event::{Event, EventStream},
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
@@ -87,13 +87,15 @@ const COMMAND_CHANNEL_CAPACITY: usize = 32;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Restore the terminal before printing a panic, so a crash doesn't leave the
-/// shell in raw mode on the alternate screen.
+/// shell in raw mode on the alternate screen. Exits so a panic in a spawned
+/// task, which tokio would otherwise catch, doesn't leave the app running.
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture);
+        let _ = execute!(io::stderr(), LeaveAlternateScreen);
         default_hook(info);
+        std::process::exit(1);
     }));
 }
 
@@ -184,7 +186,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
     enable_raw_mode()?;
     let mut stderr = io::stderr();
-    execute!(stderr, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stderr, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
 
@@ -200,6 +202,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (total_goals_tx, total_goals_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
     let (bracket_series_tx, bracket_series_rx) =
         tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+    let (season_tx, season_rx) = tokio::sync::mpsc::channel(COMMAND_CHANNEL_CAPACITY);
 
     // Date is configured in here
     let mut app = App::new(
@@ -214,11 +217,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         series_tx.clone(),
         total_goals_tx.clone(),
         bracket_series_tx.clone(),
+        season_tx.clone(),
     );
     let cancel = CancellationToken::new();
     // Only the starting tab's sources poll; the rest wait until visited
     app.state.sync_active_sources();
 
+    // Show the logo instead of a blank screen while today's game day loads
+    terminal.draw(ui::splash::render)?;
     resolve_today_from_api(&mut app, &client).await;
 
     let _ = run_app(
@@ -236,16 +242,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         series_rx,
         total_goals_rx,
         bracket_series_rx,
+        season_rx,
     )
     .await;
 
     // restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     Ok(())
@@ -266,6 +269,7 @@ async fn run_app<B: Backend>(
     series_rx: Receiver<SeriesCommand>,
     total_goals_rx: Receiver<TotalGoalsCommand>,
     bracket_series_rx: Receiver<BracketSeriesCommand>,
+    season_rx: Receiver<SeasonCommand>,
 ) -> io::Result<()>
 where
     io::Error: From<B::Error>,
@@ -382,7 +386,7 @@ where
     });
 
     // Spawn the season resolver
-    let season_source = SeasonSource::new(client.clone(), app.state.date_state.date);
+    let season_source = SeasonSource::new(client.clone(), season_rx, app.state.date_state.today);
     let season_tx = tx.clone();
     let season_cancel = cancel.clone();
     tokio::spawn(async move {

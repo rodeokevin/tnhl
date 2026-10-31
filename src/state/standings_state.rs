@@ -86,6 +86,7 @@ impl StandingsState {
             Some(_) => {}
             None => self.table_state.select(Some(0)),
         }
+        self.skip_label_row(true);
     }
 
     /// The standings tabs available for the current season, in display order.
@@ -147,15 +148,59 @@ impl StandingsState {
             .count()
     }
 
+    /// Rows of the Wild Card table that are division or "Wildcard" labels,
+    /// laid out the same way as `render_wildcard`
+    fn wildcard_label_rows(&self) -> Vec<usize> {
+        let (Some(conf), Some(data)) = (self.current_conference(), &self.standings_data) else {
+            return Vec::new();
+        };
+        let mut labels = Vec::new();
+        let mut row = 0;
+        for div in data.divisions_in_conference(&conf.abbrev) {
+            labels.push(row);
+            let teams = data
+                .standings
+                .iter()
+                .filter(|t| t.division_abbrev.as_deref() == Some(div.abbrev.as_str()))
+                .count();
+            row += 1 + teams.min(3);
+        }
+        labels.push(row);
+        labels
+    }
+
+    /// On the Wild Card tab, move the selection off a label row, keeping the
+    /// direction of travel unless that would leave the table
+    fn skip_label_row(&mut self, down: bool) {
+        if self.selected_standings != StandingsFocus::WildCard {
+            return;
+        }
+        let Some(selected) = self.table_state.selected() else {
+            return;
+        };
+        if !self.wildcard_label_rows().contains(&selected) {
+            return;
+        }
+        let row = if (down && selected + 1 < self.current_table_len()) || selected == 0 {
+            selected + 1
+        } else {
+            selected - 1
+        };
+        self.table_state.select(Some(row));
+    }
+
     /// Select a new row in the standings table
     pub fn row_down(&mut self) {
         self.table_state.scroll_down_by(1);
+        self.skip_label_row(true);
     }
     pub fn row_up(&mut self) {
         self.table_state.scroll_up_by(1);
+        self.skip_label_row(false);
     }
     pub fn page_up(&mut self) {
         table_page_up(self.visible_rows, &mut self.table_state);
+        self.skip_label_row(false);
     }
     pub fn page_down(&mut self) {
         table_page_down(
@@ -163,6 +208,7 @@ impl StandingsState {
             self.current_table_len(),
             &mut self.table_state,
         );
+        self.skip_label_row(true);
     }
 
     pub fn shift_standings_type(&mut self, next: bool) -> bool {
@@ -219,6 +265,7 @@ impl StandingsState {
     /// Reset selected row in table
     pub fn reset_table_state(&mut self) {
         self.table_state.select(Some(0));
+        self.skip_label_row(true);
     }
 }
 

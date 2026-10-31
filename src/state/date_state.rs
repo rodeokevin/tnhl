@@ -87,15 +87,22 @@ impl DateState {
         }
     }
     /// Set the year using Left/Right arrow keys
-    /// Stops at the smallest/largest year instead of overflowing
+    /// Starts from the current season while the year is unset (0), and stops
+    /// at year 1 or the largest year instead of going past them
     pub fn set_year_with_arrows(&mut self, forward: bool) -> i32 {
+        let base = match self.year {
+            0 => self
+                .current_season_year
+                .unwrap_or_else(|| season_end_year_fallback(self.today)),
+            year => year,
+        };
         let offset = self.year_selection_offset + if forward { 1 } else { -1 };
-        match self.year.checked_add(offset) {
+        match base.checked_add(offset).filter(|&year| year >= 1) {
             Some(year) => {
                 self.year_selection_offset = offset;
                 year
             }
-            None => self.year.saturating_add(self.year_selection_offset),
+            None => base.saturating_add(self.year_selection_offset),
         }
     }
     /// Format the data to be used in the title of a border;
@@ -194,5 +201,24 @@ mod tests {
         };
         assert_eq!(state.set_year_with_arrows(true), i32::MAX);
         assert_eq!(state.set_year_with_arrows(false), i32::MAX - 1);
+    }
+
+    #[test]
+    fn arrows_start_from_the_current_season_while_unset() {
+        let mut state = DateState {
+            year: 0,
+            current_season_year: Some(2027),
+            ..DateState::default()
+        };
+        assert_eq!(state.set_year_with_arrows(true), 2028);
+    }
+
+    #[test]
+    fn arrows_stop_at_year_one() {
+        let mut state = DateState {
+            year: 1,
+            ..DateState::default()
+        };
+        assert_eq!(state.set_year_with_arrows(false), 1);
     }
 }

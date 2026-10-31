@@ -8,7 +8,9 @@ use crate::models::{
     playoffs::series::SeriesResponse,
 };
 use crate::ui::{
-    games::games::{BIG_SCORE_COLOR, get_period_title, split_info_left_middle_right},
+    games::games::{
+        BIG_SCORE_COLOR, get_period_title, render_scroll_frame, split_info_left_middle_right,
+    },
     layout::split_area_vertical,
     render::{ACCENT_BLUE, ACCENT_RED, border_style},
 };
@@ -87,10 +89,8 @@ pub fn render_series(frame: &mut Frame, app: &mut App, area: Rect) {
             frame,
             upper_score_schedule[2],
             app.settings.timezone,
-            &app.settings.timezone_abbreviation,
             app.state.playoffs.vertical_scroll_offset,
             &mut app.state.playoffs.vertical_max_scroll,
-            &mut app.state.playoffs.visible_rows,
         );
     } else if let Some(message) = &app.state.playoffs.series_unavailable {
         frame.render_widget(
@@ -178,13 +178,9 @@ fn render_schedule(
     frame: &mut Frame,
     area: Rect,
     timezone: Tz,
-    timezone_abbr: &str,
     scroll_offset: usize,
     max_scroll: &mut usize,
-    visible_rows: &mut usize,
 ) {
-    *visible_rows = area.height.saturating_sub(3) as usize;
-
     let mut game_number_lines = vec![];
     let mut away_team_lines = vec![];
     let mut away_score_lines = vec![];
@@ -230,11 +226,11 @@ fn render_schedule(
         home_score_lines.push(Line::default());
 
         let status_line = match game.game_state {
-            GameState::FUT | GameState::PRE => Line::from(format!(
-                "{} {}",
-                game.compute_local_time(timezone).format("%-I:%M %p"),
-                timezone_abbr
-            )),
+            GameState::FUT | GameState::PRE => Line::from(
+                game.compute_local_time(timezone)
+                    .format("%-I:%M %p %Z")
+                    .to_string(),
+            ),
 
             GameState::LIVE | GameState::CRIT => match game.period_descriptor.as_ref() {
                 None => Line::from("Live"),
@@ -279,12 +275,7 @@ fn render_schedule(
             && (game.away_team.id == series.top_seed_team.id as u32);
         let away_base_color = if away_is_top { ACCENT_RED } else { ACCENT_BLUE };
 
-        let is_played = matches!(
-            game.game_state,
-            GameState::OVER | GameState::FINAL | GameState::OFF
-        );
-
-        let away_style = if is_played {
+        let away_style = if is_final {
             match (winner, is_final) {
                 (Some("away"), true) => Style::new().fg(away_base_color).bold(),
 
@@ -306,7 +297,7 @@ fn render_schedule(
 
         let home_base_color = if home_is_top { ACCENT_RED } else { ACCENT_BLUE };
 
-        let home_style = if is_played {
+        let home_style = if is_final {
             match (winner, is_final) {
                 (Some("home"), true) => Style::new().fg(home_base_color).bold(),
 
@@ -337,43 +328,23 @@ fn render_schedule(
         }
     }
 
-    let vert_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
-        .split(area);
-
-    let content_height = vert_chunks[1].height as usize;
-
-    let max_scroll_val = game_number_lines.len().saturating_sub(content_height);
-    *max_scroll = max_scroll_val;
-
-    let offset = scroll_offset.min(max_scroll_val);
-
-    let can_scroll_up = offset > 0;
-    let can_scroll_down = offset < max_scroll_val;
-
-    let end = (offset + content_height).min(game_number_lines.len());
-
-    let visible_game_number_lines = game_number_lines[offset..end].to_vec();
-    let visible_away_team_lines = away_team_lines[offset..end].to_vec();
-    let visible_away_score_lines = away_score_lines[offset..end].to_vec();
-    let visible_game_status_lines = game_status_lines[offset..end].to_vec();
-    let visible_home_score_lines = home_score_lines[offset..end].to_vec();
-    let visible_home_team_lines = home_team_lines[offset..end].to_vec();
-
-    frame.render_widget(
-        Line::from(if can_scroll_up { "▲" } else { "" }).centered(),
-        vert_chunks[0],
+    // The schedule doesn't page, so the visible row count isn't kept
+    let mut visible_rows = 0;
+    let view = render_scroll_frame(
+        frame,
+        area,
+        game_number_lines.len(),
+        scroll_offset,
+        max_scroll,
+        &mut visible_rows,
     );
-
-    frame.render_widget(
-        Line::from(if can_scroll_down { "▼" } else { "" }).centered(),
-        vert_chunks[2],
-    );
+    let visible = |lines: &[Line<'static>]| lines[view.range.clone()].to_vec();
+    let visible_game_number_lines = visible(&game_number_lines);
+    let visible_away_team_lines = visible(&away_team_lines);
+    let visible_away_score_lines = visible(&away_score_lines);
+    let visible_game_status_lines = visible(&game_status_lines);
+    let visible_home_score_lines = visible(&home_score_lines);
+    let visible_home_team_lines = visible(&home_team_lines);
 
     let constraints = [
         Constraint::Fill(1),
@@ -390,7 +361,7 @@ fn render_schedule(
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
-        .split(vert_chunks[1]);
+        .split(view.content);
 
     frame.render_widget(Paragraph::new(visible_game_number_lines), columns[2]);
     frame.render_widget(Paragraph::new(visible_away_team_lines), columns[3]);

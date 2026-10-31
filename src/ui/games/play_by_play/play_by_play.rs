@@ -41,8 +41,6 @@ pub fn render_play_by_play(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // app.state.games.plays_visible_rows = inner.height.saturating_sub(1) as usize;
-
     let plays = app
         .state
         .games
@@ -53,7 +51,6 @@ pub fn render_play_by_play(frame: &mut Frame, app: &mut App, area: Rect) {
         .and_then(|id| app.state.games.plays_data.get(&id));
 
     let Some(plays) = plays else {
-        // app.state.games.plays_len = 0;
         let missing = app.state.games.missing_text(
             &app.state.games.plays_unavailable,
             "Loading play-by-play...",
@@ -79,7 +76,6 @@ pub fn render_play_by_play(frame: &mut Frame, app: &mut App, area: Rect) {
         .rev()
         .map(|p| play_row(p, plays, &roster, desc_width))
         .collect();
-    // app.state.games.plays_len = rows.len();
 
     let table = Table::new(rows, PLAYS_COLUMNS)
         .header(
@@ -265,11 +261,6 @@ fn format_penalty(details: &PlayDetails, roster: &HashMap<u32, &RosterPlayer>) -
         return "Penalty".to_string();
     };
 
-    let duration = details
-        .duration
-        .map(|d| format!("{} min", d))
-        .unwrap_or_default();
-
     // Standalone penalty-shot award (not tied to a specific infraction type).
     if matches!(key, DescKey::PenaltyShot | DescKey::PenaltyShotMinor) {
         let awarded_to = name_with_number(roster, details.drawn_by_player_id)
@@ -289,23 +280,28 @@ fn format_penalty(details: &PlayDetails, roster: &HashMap<u32, &RosterPlayer>) -
         return s;
     }
 
+    // "2 min for hooking", or just "for hooking" when the duration is missing
+    let infraction = match details.duration {
+        Some(d) => format!("{} min for {}", d, penalty_reason(key)),
+        None => format!("for {}", penalty_reason(key)),
+    };
+
     if is_bench_penalty(key) {
+        // Without a duration, don't start the line with a bare "for"
+        let mut s = match details.duration {
+            Some(_) => infraction,
+            None => format!("Bench penalty {}", infraction),
+        };
         if let Some(server) = name_with_number(roster, details.served_by_player_id) {
-            return format!(
-                "{} for {} served by {}",
-                duration,
-                penalty_reason(key),
-                server
-            );
-        } else {
-            return format!("{} for {}", duration, penalty_reason(key));
+            s.push_str(&format!(" served by {}", server));
         }
+        return s;
     }
 
     // Standard player minor/major/misconduct.
     let by =
         name_with_number(roster, details.committed_by_player_id).unwrap_or_else(|| "?".to_string());
-    let mut s = format!("{} {} for {}", by, duration, penalty_reason(key));
+    let mut s = format!("{} {}", by, infraction);
     if let Some(drawn) = name_with_number(roster, details.drawn_by_player_id) {
         s.push_str(&format!(" {}", drawn));
     }
@@ -460,5 +456,27 @@ fn type_style(kind: &TypeDescKey) -> Style {
         | TypeDescKey::GameEnd
         | TypeDescKey::Unknown => Style::new().fg(Color::DarkGray),
         _ => Style::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn penalty(key: DescKey, duration: Option<u32>) -> String {
+        let details = PlayDetails {
+            desc_key: Some(key),
+            duration,
+            ..PlayDetails::default()
+        };
+        format_penalty(&details, &HashMap::new())
+    }
+
+    #[test]
+    fn penalty_without_duration_has_single_spaces() {
+        assert_eq!(penalty(DescKey::Hooking, Some(2)), "? 2 min for hooking");
+        assert_eq!(penalty(DescKey::Hooking, None), "? for hooking");
+        assert!(!penalty(DescKey::TooManyMenOnTheIce, None).contains("  "));
+        assert!(penalty(DescKey::TooManyMenOnTheIce, Some(2)).starts_with("2 min for "));
     }
 }

@@ -15,7 +15,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-// Length of the middle chunk for scoring
+// Length of the middle chunk for stats
 pub const STATS_MIDDLE_LENGTH: u16 = 25;
 
 pub fn render_stats(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -179,7 +179,7 @@ pub fn render_stats(frame: &mut Frame, app: &mut App, area: Rect) {
     let visible_period: Vec<Line> = middle_lines[view.range].to_vec();
 
     // Re-split the content area horizontally
-    let chunks = split_info_left_middle_right(view.content, 25);
+    let chunks = split_info_left_middle_right(view.content, STATS_MIDDLE_LENGTH);
 
     frame.render_widget(Paragraph::new(visible_away), chunks[0]);
     frame.render_widget(Paragraph::new(visible_period), chunks[1]);

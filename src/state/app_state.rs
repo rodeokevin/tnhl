@@ -14,6 +14,7 @@ use crate::sources::{
     },
     playoffs::bracket::BracketCommand,
     playoffs::bracket_series::{BracketSeriesCommand, BracketSeriesTarget},
+    season::SeasonCommand,
     standings::StandingsCommand,
     teams_stats::TeamStatsCommand,
 };
@@ -88,6 +89,7 @@ pub struct AppState {
     pub series_tx: Sender<SeriesCommand>,
     pub total_goals_tx: Sender<TotalGoalsCommand>,
     pub bracket_series_tx: Sender<BracketSeriesCommand>,
+    pub season_tx: Sender<SeasonCommand>,
 
     pub selected_menu: MenuFocus,
     pub display_menu: bool,
@@ -100,7 +102,6 @@ pub struct AppState {
     pub help: HelpState,
 
     pub focus: PaneFocus,
-    pub previous_focus: PaneFocus,
     pub should_quit: bool,
     /// Which sources were last told to poll, so changes are only sent once
     sent_active: Option<ActiveSources>,
@@ -118,6 +119,7 @@ impl AppState {
         series_tx: Sender<SeriesCommand>,
         total_goals_tx: Sender<TotalGoalsCommand>,
         bracket_series_tx: Sender<BracketSeriesCommand>,
+        season_tx: Sender<SeasonCommand>,
     ) -> Self {
         Self {
             games_tx,
@@ -130,6 +132,7 @@ impl AppState {
             series_tx,
             total_goals_tx,
             bracket_series_tx,
+            season_tx,
 
             date_state: DateState::default(),
             timezone: Tz::default(),
@@ -145,7 +148,6 @@ impl AppState {
             help: HelpState::default(),
 
             focus: PaneFocus::default(),
-            previous_focus: PaneFocus::default(),
             should_quit: false,
             sent_active: None,
         }
@@ -173,6 +175,7 @@ impl AppState {
                 log::debug!("Today's game day is now {}", date);
                 // Only `today` moves; the selected date stays where the user put it
                 self.date_state.today = date;
+                self.season_tx.try_send(SeasonCommand::SetToday(date)).ok();
                 let live = self
                     .games
                     .games_data
@@ -352,6 +355,9 @@ impl AppState {
             } => {
                 log::debug!("Updating plays data for game {}", game_id);
                 self.games.plays_unavailable.remove(&game_id);
+                if self.games.current_game_id() == Some(game_id) {
+                    self.games.keep_selected_play(&parsed_plays);
+                }
                 self.games.plays_data.insert(game_id, parsed_plays);
             }
             AppEvent::GameStoryUpdate {
@@ -630,7 +636,6 @@ impl AppState {
 
             // Date/year picker actions
             Action::EnterDatePicker => {
-                self.previous_focus = self.focus;
                 self.focus = PaneFocus::DatePicker;
                 self.date_state.text.clear();
             }
@@ -644,7 +649,7 @@ impl AppState {
                 self.date_state.date_selection_offset = 0;
                 self.date_state.year_selection_offset = 0;
                 self.date_state.is_valid = true;
-                self.focus = self.previous_focus;
+                self.focus = PaneFocus::Content;
             }
             Action::UpdateDate => {
                 let prev = self.date_state.date;
@@ -652,7 +657,7 @@ impl AppState {
                     if self.date_state.date != prev {
                         self.handle_date_change();
                     }
-                    self.focus = self.previous_focus;
+                    self.focus = PaneFocus::Content;
                 }
             }
             Action::YearLeft => self.date_state.move_year_selector_by_arrow(false),
@@ -663,12 +668,11 @@ impl AppState {
                     if self.date_state.year != prev {
                         self.handle_year_change();
                     }
-                    self.focus = self.previous_focus;
+                    self.focus = PaneFocus::Content;
                 }
             }
             // Team picker actions
             Action::EnterTeamPicker => {
-                self.previous_focus = self.focus;
                 self.focus = PaneFocus::TeamPicker;
                 self.team_stats.team_picker.text.clear();
             }
@@ -678,17 +682,19 @@ impl AppState {
             Action::ExitTeamPicker => {
                 self.team_stats.team_picker.text.clear();
                 self.team_stats.team_picker.is_valid = true;
-                self.focus = self.previous_focus;
+                self.focus = PaneFocus::Content;
             }
             Action::UpdateTeam => {
+                let prev = self.team_stats.team_picker.current_team;
                 if self.try_update_team_from_input().is_ok() {
-                    self.handle_team_change();
-                    self.focus = self.previous_focus;
+                    if self.team_stats.team_picker.current_team != prev {
+                        self.handle_team_change();
+                    }
+                    self.focus = PaneFocus::Content;
                 }
             }
             // Help page actions
             Action::EnterHelp => {
-                self.previous_focus = self.focus;
                 self.focus = PaneFocus::Help;
             }
             Action::HelpPageUp => self.help.page_up(),
@@ -696,7 +702,7 @@ impl AppState {
             Action::HelpScrollUp => self.help.row_up(),
             Action::HelpScrollDown => self.help.row_down(),
             Action::ExitHelp => {
-                self.focus = self.previous_focus;
+                self.focus = PaneFocus::Content;
                 self.help.reset();
             }
 
@@ -1040,6 +1046,7 @@ mod tests {
         use tokio::sync::mpsc::channel;
         AppState::new(
             games_tx,
+            channel(8).0,
             channel(8).0,
             channel(8).0,
             channel(8).0,

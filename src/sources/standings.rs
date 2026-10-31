@@ -192,7 +192,7 @@ impl Source for StandingsSource {
                             }
                         }
                         StandingsCommand::SetSeasonBounds(seasons) => {
-                            // Bounds are resolved exactly once by SeasonSource
+                            // SeasonSource re-sends bounds when the game day changes
                             self.seasons = Some(seasons);
                             if self.gate.target_changed() {
                                 self.fetch(&tx).await;
